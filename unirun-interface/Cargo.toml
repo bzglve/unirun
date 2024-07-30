@@ -1,0 +1,10 @@
+[package]
+name = "unirun-interface"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glib = "0.20"
+gio = "0.20"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
