@@ -1,0 +1,21 @@
+[package]
+name = "unirun"
+version = "0.1.0"
+authors = ["Viktor Bezuglov viktory683@gmail.com"]
+edition = "2021"
+# description = "" # TODO
+license = "MIT"
+repository = "https://github.com/bzglve/unirun"
+homepage = "https://github.com/bzglve/unirun"
+documentation = "https://github.com/bzglve/unirun"
+# keywords = [] # TODO
+# categories = [] # TODO
+
+[dependencies]
+unirun-if = { path = "../unirun-interface", package = "unirun-interface" }
+ctrlc = { version = "3.4", features = ["termination"] }
+gtk = { version = "0.9", package = "gtk4", features = ["v4_14"] }
+gtk-layer-shell = { version = "0.4", package = "gtk4-layer-shell" }
+log = "0.4"
+env_logger = "0.11"
+serde_json = "1.0"

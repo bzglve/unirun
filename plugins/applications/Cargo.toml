@@ -1,0 +1,13 @@
+[package]
+name = "unirun-plugin-applications"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+unirun-if = { path = "../../unirun-interface", package = "unirun-interface" }
+glib = "0.20"
+gio = "0.20"
+log = "0.4"
+env_logger = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
