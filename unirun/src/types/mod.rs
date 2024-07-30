@@ -3,7 +3,7 @@ pub mod gmatch;
 use std::rc::Rc;
 
 use gmatch::GMatch;
-use gtk::{gio, glib, prelude::StaticType};
+use gtk::{gio, glib};
 
 pub struct RuntimeData {
     pub application: Option<Rc<gtk::Application>>,
@@ -18,11 +18,7 @@ impl Default for RuntimeData {
             application: Default::default(),
             connections: Default::default(),
             entry_pool: Default::default(),
-            match_store: Rc::new(
-                gio::ListStore::builder()
-                    .item_type(GMatch::static_type())
-                    .build(),
-            ),
+            match_store: Rc::new(gio::ListStore::new::<GMatch>()),
         }
     }
 }

@@ -9,8 +9,6 @@ use unirun_if::match_if::Match;
 use crate::utils::{build_image, build_label};
 
 mod imp {
-    use std::borrow::Borrow;
-
     use super::*;
 
     #[derive(Default)]
@@ -110,6 +108,7 @@ glib::wrapper! {
     pub struct GMatch(ObjectSubclass<imp::GMatch>);
 }
 
+// TODO does we need so much setters-getters? Is there any way to simplify this
 impl GMatch {
     pub fn new() -> Self {
         glib::Object::new()
@@ -180,6 +179,8 @@ impl From<Match> for GMatch {
         item.set_icon(value.icon.as_deref());
         item.set_use_pango(value.use_pango);
 
+        // TODO what to do with plugin-pid?
+
         item
     }
 }
@@ -211,11 +212,8 @@ impl From<GMatch> for gtk::Widget {
             .spacing(12)
             .build();
 
-        if true {
-            // !runtime_data.config.hide_match_icons {
-            if let Some(icon) = value.get_icon() {
-                match_box.append(&build_image(&icon));
-            }
+        if let Some(icon) = value.get_icon() {
+            match_box.append(&build_image(&icon));
         }
 
         let vbox = gtk::Box::builder()

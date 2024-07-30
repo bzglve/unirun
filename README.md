@@ -59,3 +59,5 @@ unirun  # if it placed into dir from your $PATH
 - [ ] Protocol
 - [ ] Plugins
 - [ ] UI
+  - [ ] Close on Escape
+  - [ ] First row selected by default

@@ -29,7 +29,6 @@ fn handle_get_data<'a>(
         while i < matches.len() {
             let m = matches.get(i).unwrap();
 
-            // FIXME somehow removing this debug line breaks sending concatenating previous send with next
             debug!("Sending {}", m);
             stream_write_future(
                 &connection.output_stream(),
@@ -46,8 +45,7 @@ fn handle_get_data<'a>(
                 });
             debug!("Got response: {:?}", response);
 
-            // FIXME
-            // This is not ideal.
+            // FIXME workaround
             if response.starts_with("abort") {
                 warn!("ABORTING");
                 connection.output_stream().clear_pending();

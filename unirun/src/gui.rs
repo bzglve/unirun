@@ -30,7 +30,7 @@ pub fn init_layer_shell(window: &impl LayerShell) {
 
     window.set_anchor(Edge::Top, true); // TODO move to config
 
-    window.set_keyboard_mode(KeyboardMode::OnDemand);
+    window.set_keyboard_mode(KeyboardMode::OnDemand); // TODO move to config
 }
 
 pub fn build_ui(app: &impl IsA<gtk::Application>, runtime_data: Rc<RefCell<RuntimeData>>) {
@@ -74,7 +74,6 @@ pub fn build_ui(app: &impl IsA<gtk::Application>, runtime_data: Rc<RefCell<Runti
         .hexpand(true)
         .min_content_width(340)
         .focusable(true)
-        // .hscrollbar_policy()
         .build();
     scroll_window.set_child(Some(&*main_list));
 
@@ -145,21 +144,6 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                 entry_pool.len()
             );
 
-            // let connections = runtime_data.connections.clone();
-            // for conn in connections {
-            //     debug!("PENDING  IN: {:?}", conn.input_stream().has_pending());
-            //     if conn.input_stream().has_pending() {
-            //         debug!("SKIPPING");
-            //         conn.input_stream().clear_pending();
-            //         conn.input_stream()
-            //             .skip(SOCKET_BUFFER_SIZE, gio::Cancellable::NONE)
-            //             .unwrap();
-
-            //         debug!("PENDING  IN: {:?}", conn.input_stream().has_pending());
-            //     }
-            //     debug!("PENDING OUT: {:?}", conn.output_stream().has_pending());
-            // }
-
             entry_pool
                 .iter()
                 .for_each(|jh: &glib::JoinHandle<_>| jh.abort());
@@ -221,15 +205,6 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                     while !&response.starts_with("ok:") {
                         response = stream_read_future(&conn.input_stream()).await.unwrap();
                     }
-
-                    // if !response.starts_with("ok:") {
-                    //     error!(
-                    //         "Plugin returned unexpected answer. Plugin: {:?}, Answer: {:?}",
-                    //         conn.socket().credentials().unwrap().to_str(),
-                    //         response
-                    //     );
-                    //     return;
-                    // }
 
                     let count = response
                         .trim_start_matches("ok:")
