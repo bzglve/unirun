@@ -1,6 +1,6 @@
 [package]
 name = "unirun"
-version = "0.1.0-alpha"
+version = "0.1.1-alpha"
 authors = ["Viktor Bezuglov viktory683@gmail.com"]
 edition = "2021"
 # description = "" # TODO
@@ -14,7 +14,7 @@ documentation = "https://github.com/bzglve/unirun"
 [dependencies]
 unirun-if = { path = "../unirun-interface", package = "unirun-interface" }
 ctrlc = { version = "3.4", features = ["termination"] }
-gtk = { version = "0.9", package = "gtk4", features = ["v4_14"] }
+gtk = { version = "0.9", package = "gtk4" }
 gtk-layer-shell = { version = "0.4", package = "gtk4-layer-shell" }
 log = "0.4"
 env_logger = "0.11"

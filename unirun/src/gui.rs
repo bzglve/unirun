@@ -4,6 +4,7 @@ use std::{
 };
 
 use gtk::{
+    gdk::Key,
     glib::{self, clone},
     prelude::*,
 };
@@ -12,7 +13,9 @@ use gtk_layer_shell::{KeyboardMode, LayerShell};
 use log::*;
 use unirun_if::{
     match_if::Match,
-    socket::{connect_and_write_future, stream_read_future, stream_write_future},
+    socket::{
+        connect_and_write, connect_and_write_future, stream_read_future, stream_write_future,
+    },
 };
 
 use crate::{
@@ -33,6 +36,57 @@ pub fn init_layer_shell(window: &impl LayerShell) {
     window.set_keyboard_mode(KeyboardMode::OnDemand); // TODO move to config
 }
 
+fn connect_key_press_events<F>(
+    widget: Rc<impl WidgetExt>,
+    event_controller_key: gtk::EventControllerKey,
+    handler: F,
+) where
+    F: Fn(Key) -> glib::Propagation + 'static,
+{
+    widget.add_controller(event_controller_key.clone());
+    event_controller_key.connect_key_pressed(move |_, keyval, _, _| handler(keyval));
+}
+
+fn connect_window_key_press_events(
+    widget: Rc<impl WidgetExt>,
+    event_controller_key: gtk::EventControllerKey,
+) {
+    connect_key_press_events(widget, event_controller_key, move |keyval| match keyval {
+        Key::Escape => {
+            // TODO this better be non-blocking
+            connect_and_write("quit").unwrap();
+            glib::Propagation::Stop
+        }
+        _ => glib::Propagation::Proceed,
+    });
+}
+
+fn connect_entry_key_press_events(
+    widget: Rc<impl WidgetExt>,
+    event_controller_key: gtk::EventControllerKey,
+) {
+    connect_key_press_events(
+        widget.clone(),
+        event_controller_key,
+        move |keyval| match keyval {
+            Key::Escape => {
+                // TODO this better be non-blocking
+                connect_and_write("quit").unwrap();
+                glib::Propagation::Stop
+            }
+            Key::Down | Key::Up => {
+                widget.emit_move_focus(if keyval == Key::Down {
+                    gtk::DirectionType::TabForward
+                } else {
+                    gtk::DirectionType::TabBackward
+                });
+                glib::Propagation::Proceed
+            }
+            _ => glib::Propagation::Proceed,
+        },
+    );
+}
+
 pub fn build_ui(app: &impl IsA<gtk::Application>, runtime_data: Rc<RefCell<RuntimeData>>) {
     debug!("Bulding UI");
 
@@ -42,6 +96,9 @@ pub fn build_ui(app: &impl IsA<gtk::Application>, runtime_data: Rc<RefCell<Runti
 
     init_layer_shell(&window);
 
+    let window_eck = gtk::EventControllerKey::new();
+    connect_window_key_press_events(window.clone().into(), window_eck);
+
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 5);
 
     let entry = Rc::new(gtk::SearchEntry::new());
@@ -50,6 +107,10 @@ pub fn build_ui(app: &impl IsA<gtk::Application>, runtime_data: Rc<RefCell<Runti
         runtime_data,
         move |entry| on_entry_changed(&entry.text(), runtime_data.clone())
     ));
+
+    let entry_eck = gtk::EventControllerKey::new();
+    connect_entry_key_press_events(entry.clone(), entry_eck);
+
     vbox.append(&*entry);
 
     let match_store = runtime_data.borrow().match_store.clone();
@@ -66,6 +127,12 @@ pub fn build_ui(app: &impl IsA<gtk::Application>, runtime_data: Rc<RefCell<Runti
             .expect("Can't downcast glib::Object to GMatch")
             .into()
     });
+
+    match_store.connect_items_changed(clone!(
+        #[strong]
+        main_list,
+        move |_, _, _, _| main_list.select_row(main_list.row_at_index(0).as_ref())
+    ));
 
     setup_activation(entry.clone(), main_list.clone(), runtime_data.clone());
 
