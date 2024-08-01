@@ -1,25 +1,67 @@
 use std::{
-    cell::RefCell, env::current_exe, fs::read_dir, os::unix::fs::PermissionsExt, path::PathBuf,
-    process::Command, rc::Rc,
+    cell::RefCell, env::current_exe, error::Error, fs::read_dir, os::unix::fs::PermissionsExt,
+    path::PathBuf, process::Command, rc::Rc,
 };
 
-use gtk::{gio, glib, prelude::*};
+use gtk::{
+    gio,
+    glib::{self, clone},
+    prelude::*,
+};
 #[allow(unused_imports)]
 use log::*;
-use unirun_if::{path, socket::stream_read_future};
+use unirun_if::{
+    match_if::Match,
+    path,
+    socket::{connect_and_write_future, stream_read_future, stream_write_future},
+};
 
-use crate::{gui::on_entry_changed, types::RuntimeData};
-
-fn handle_socket_data(data: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
-    match data {
-        "quit" => runtime_data.borrow().application.quit(),
-        _ => warn!("Received unknown data: {:?}. Ignoring", data),
-    }
-}
+use crate::types::{gmatch::GMatch, RuntimeData};
 
 pub fn build_socket_service(
     runtime_data: Rc<RefCell<RuntimeData>>,
 ) -> Result<gio::SocketService, glib::Error> {
+    fn handle_new_connection(
+        connection: gio::SocketConnection,
+        runtime_data: Rc<RefCell<RuntimeData>>,
+    ) {
+        fn handle_new_connection_from_self(
+            connection: impl IOStreamExt,
+            runtime_data: Rc<RefCell<RuntimeData>>,
+        ) {
+            fn handle_socket_data(data: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
+                match data {
+                    "quit" => runtime_data.borrow().application.quit(),
+                    _ => warn!("Received unknown data: {:?}. Ignoring", data),
+                }
+            }
+
+            glib::spawn_future_local(async move {
+                let data = stream_read_future(&connection.input_stream())
+                    .await
+                    .unwrap_or_else(|e| {
+                        error!("{}", e);
+                        panic!("{}", e);
+                    });
+
+                handle_socket_data(&data, runtime_data);
+            });
+        }
+
+        let creds = connection.socket().credentials().unwrap_or_default();
+
+        let pid = creds.unix_pid().expect("Failed to read process ID") as u64;
+        if std::process::id() as u64 == pid {
+            handle_new_connection_from_self(connection, runtime_data.clone());
+        } else {
+            runtime_data
+                .borrow_mut()
+                .connections
+                .push(connection.clone());
+            on_entry_changed("", runtime_data.clone());
+        }
+    }
+
     let socket_path = path::socket();
     let socket_service = gio::SocketService::new();
 
@@ -36,40 +78,6 @@ pub fn build_socket_service(
     });
 
     Ok(socket_service)
-}
-
-fn handle_new_connection(
-    connection: gio::SocketConnection,
-    runtime_data: Rc<RefCell<RuntimeData>>,
-) {
-    let creds = connection.socket().credentials().unwrap_or_default();
-
-    let pid = creds.unix_pid().expect("Failed to read process ID") as u64;
-    if std::process::id() as u64 == pid {
-        handle_new_connection_from_self(connection, runtime_data.clone());
-    } else {
-        runtime_data
-            .borrow_mut()
-            .connections
-            .push(connection.clone());
-        on_entry_changed("", runtime_data.clone());
-    }
-}
-
-fn handle_new_connection_from_self(
-    connection: impl IOStreamExt,
-    runtime_data: Rc<RefCell<RuntimeData>>,
-) {
-    glib::spawn_future_local(async move {
-        let data = stream_read_future(&connection.input_stream())
-            .await
-            .unwrap_or_else(|e| {
-                error!("{}", e);
-                panic!("{}", e);
-            });
-
-        handle_socket_data(&data, runtime_data);
-    });
 }
 
 pub fn build_label(use_markup: bool, label: &str) -> gtk::Label {
@@ -130,4 +138,151 @@ pub fn launch_plugins() {
     } else {
         error!("Failed to get current executable path");
     }
+}
+
+pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
+    fn clear_entry_pool(runtime_data: &mut RuntimeData) {
+        let entry_pool = &runtime_data.entry_pool;
+
+        if !entry_pool.is_empty() {
+            warn!(
+                "There is still {} running tasks. Aborting",
+                entry_pool.len()
+            );
+
+            entry_pool.iter().for_each(|jh| jh.abort());
+            runtime_data.entry_pool.clear();
+        }
+    }
+
+    // fn filter_connections(runtime_data: &mut RuntimeData) {
+    //     let connections = runtime_data.connections.clone();
+    //     runtime_data.connections = connections
+    //         .into_iter()
+    //         .filter_map(|conn| {
+    //             // TODO test
+    //             if conn.is_connected() {
+    //                 Some(conn)
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .collect();
+    // }
+
+    async fn handle_stream_message(
+        conn: &gio::SocketConnection,
+        match_store: &gio::ListStore,
+    ) -> Result<(), Box<dyn Error>> {
+        let s = stream_read_future(&conn.input_stream()).await?;
+        let m = serde_json::from_str::<Match>(&s)?;
+
+        match_store.append(&{
+            let gmatch = GMatch::from(m);
+            gmatch.set_plugin_pid(conn.socket().credentials()?.unix_pid()? as u64);
+            gmatch
+        });
+
+        Ok(())
+    }
+
+    let mut runtime_data = runtime_data.borrow_mut();
+
+    clear_entry_pool(&mut runtime_data);
+    // filter_connections(&mut runtime_data);
+
+    let match_store = runtime_data.match_store.clone();
+    match_store.remove_all();
+
+    let text = Rc::new(text.to_owned());
+
+    for conn in runtime_data.connections.clone() {
+        runtime_data
+            .entry_pool
+            .push(glib::spawn_future_local(clone!(
+                #[strong]
+                text,
+                #[strong]
+                match_store,
+                async move {
+                    stream_write_future(&conn.output_stream(), "abort")
+                        .await
+                        .unwrap();
+
+                    stream_write_future(&conn.output_stream(), format!("get_data,{}", text))
+                        .await
+                        .unwrap();
+
+                    // FIXME is this workaround?
+                    let mut response = String::new();
+                    while !response.starts_with("ok:") {
+                        response = stream_read_future(&conn.input_stream()).await.unwrap();
+                    }
+
+                    let count = response
+                        .trim_start_matches("ok:")
+                        .trim()
+                        .parse::<usize>()
+                        .unwrap_or_else(|_| {
+                            error!(
+                                "Failed to read number of packages from {:?}. Using default",
+                                response
+                            );
+                            0
+                        });
+
+                    for _ in 0..count {
+                        match handle_stream_message(&conn, &match_store).await {
+                            Ok(_) => stream_write_future(&conn.output_stream(), "ok")
+                                .await
+                                .unwrap(),
+                            Err(e) => {
+                                error!("Error handling stream message: {}", e);
+                                stream_write_future(&conn.output_stream(), "err")
+                                    .await
+                                    .unwrap()
+                            }
+                        };
+                    }
+                }
+            )))
+    }
+}
+
+pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<RuntimeData>>) {
+    glib::spawn_future_local(async move {
+        let gmatch = runtime_data
+            .borrow()
+            .match_store
+            .item(row_id)
+            .unwrap_or_else(|| panic!("Failed to get list_store item at {} position", row_id))
+            .downcast::<GMatch>()
+            .expect("Failed to downcast Object to MatchRow");
+
+        let plugin_pid = gmatch.get_plugin_pid();
+
+        let connections = runtime_data.borrow().connections.clone();
+        let connection = connections
+            .iter()
+            .find(|conn| {
+                conn.socket().credentials().unwrap().unix_pid().unwrap() as u64 == plugin_pid
+            })
+            .unwrap();
+
+        let rmatch: Match = gmatch.clone().into();
+        stream_write_future(
+            &connection.output_stream(),
+            format!("activate,{}", rmatch.get_id()),
+        )
+        .await
+        .unwrap();
+
+        let response = stream_read_future(&connection.input_stream())
+            .await
+            .unwrap();
+
+        if response == "ok" {
+            connect_and_write_future("quit").await.unwrap();
+        }
+    });
 }
