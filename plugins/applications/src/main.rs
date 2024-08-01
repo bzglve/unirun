@@ -144,8 +144,8 @@ fn main() -> Result<(), glib::Error> {
 
                 let data = match stream_read_future(&conn.input_stream()).await {
                     Ok(d) => d,
-                    Err(e) => {
-                        error!("Failed to read data: {}", e);
+                    Err(_) => {
+                        // error!("Failed to read data: {}", e);
                         main_loop.quit();
                         continue;
                     }

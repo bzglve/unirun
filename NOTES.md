@@ -9,16 +9,15 @@ sequenceDiagram
 
     runner ->> plugin: GetData(entry_text)
     plugin ->> runner: Ok
-    Note over plugin: count - how many packages will be send
     loop Data transfer
-        plugin ->> runner: Data
+        plugin ->> runner: Match
         runner ->> plugin: Ok
         Note over runner: `Ok` like runner understands data and accepted it
-        plugin ->> runner: Data
+        plugin ->> runner: Match
         runner ->> plugin: Err
-        plugin ->> runner: Data
+        plugin ->> runner: Match
         runner ->> plugin: Ok
-        plugin ->> runner: Data
+        plugin ->> runner: Match
         runner ->> plugin: Ok
         plugin ->> runner: Abort
     end
@@ -33,11 +32,11 @@ sequenceDiagram
     runner ->> plugin: GetData(entry_text)
     plugin ->> runner: Ok
     loop Data transfer
-        plugin ->> runner: Data
+        plugin ->> runner: Match
         runner ->> plugin: Ok
-        plugin ->> runner: Data
+        plugin ->> runner: Match
         runner ->> plugin: Ok
-        plugin ->> runner: Data
+        plugin ->> runner: Match
         runner ->> plugin: Abort
     end
     runner ->> plugin: GetData(new_entry_text)

@@ -1,3 +1,5 @@
+// TODO add some serde tags to have cleaner json
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]

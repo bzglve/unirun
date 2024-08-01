@@ -1,11 +1,11 @@
 [package]
 name = "unirun-interface"
-version = "0.1.1-alpha"
+version = "0.2.0-alpha"
 edition = "2021"
 
 [dependencies]
-glib = "0.20"
-gio = "0.20"
+glib = { workspace = true }
+gio = { workspace = true }
 uuid = { version = "1.10", features = ["v4", "serde"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
