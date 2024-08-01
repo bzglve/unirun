@@ -1,7 +1,7 @@
 /// link to the [source](https://gtk-rs.org/gtk-rs-core/stable/latest/docs/glib/subclass/index.html)
 use gtk::{
-    gio::prelude::*,
     glib::{self, subclass::prelude::*},
+    prelude::{ObjectExt, ToValue},
 };
 use std::cell::{Cell, RefCell};
 use unirun_if::match_if::Match;
@@ -31,6 +31,7 @@ mod imp {
     impl ObjectImpl for GMatch {
         fn properties() -> &'static [glib::ParamSpec] {
             use std::sync::OnceLock;
+
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
                 vec![
@@ -47,40 +48,46 @@ mod imp {
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "id" => {
-                    let id = value
-                        .get()
-                        .expect("type conformity checked by `Object::set_property`");
-                    self.id.replace(id);
+                    self.id.replace(
+                        value
+                            .get()
+                            .expect("type conformity checked by `Object::set_property`"),
+                    );
                 }
                 "title" => {
-                    let title = value
-                        .get()
-                        .expect("type conformity checked by `Object::set_property`");
-                    self.title.replace(title);
+                    self.title.replace(
+                        value
+                            .get()
+                            .expect("type conformity checked by `Object::set_property`"),
+                    );
                 }
                 "description" => {
-                    let description = value
-                        .get()
-                        .expect("type conformity checked by `Object::set_property`");
-                    self.description.replace(description);
+                    self.description.replace(
+                        value
+                            .get()
+                            .expect("type conformity checked by `Object::set_property`"),
+                    );
                 }
                 "icon" => {
-                    let icon = value
-                        .get()
-                        .expect("type conformity checked by `Object::set_property`");
-                    self.icon.replace(icon);
+                    self.icon.replace(
+                        value
+                            .get()
+                            .expect("type conformity checked by `Object::set_property`"),
+                    );
                 }
                 "use-pango" => {
-                    let use_pango = value
-                        .get()
-                        .expect("type conformity checked by `Object::set_property`");
-                    self.use_pango.replace(use_pango);
+                    self.use_pango.replace(
+                        value
+                            .get()
+                            .expect("type conformity checked by `Object::set_property`"),
+                    );
                 }
                 "plugin-pid" => {
-                    let plugin_pid = value
-                        .get()
-                        .expect("type conformity checked by `Object::set_property`");
-                    self.plugin_pid.replace(plugin_pid);
+                    self.plugin_pid.replace(
+                        value
+                            .get()
+                            .expect("type conformity checked by `Object::set_property`"),
+                    );
                 }
                 _ => unimplemented!(),
             }
@@ -99,7 +106,7 @@ mod imp {
         }
 
         fn constructed(&self) {
-            self.parent_constructed()
+            self.parent_constructed();
         }
     }
 }
@@ -173,13 +180,13 @@ impl From<Match> for GMatch {
     fn from(value: Match) -> Self {
         let item = Self::new();
 
-        item.set_id(&value.get_id());
+        item.set_id(value.get_id());
         item.set_title(&value.title);
         item.set_description(value.description.as_deref());
         item.set_icon(value.icon.as_deref());
         item.set_use_pango(value.use_pango);
 
-        // TODO what to do with plugin-pid?
+        // TODO Handle plugin-pid if needed
 
         item
     }

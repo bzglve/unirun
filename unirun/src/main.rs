@@ -4,58 +4,71 @@ mod utils;
 
 use std::{cell::RefCell, fs, rc::Rc};
 
-use gtk::{prelude::*, Application};
+use gtk::{
+    glib::{self, clone},
+    prelude::*,
+};
 #[allow(unused_imports)]
 use log::*;
 use types::RuntimeData;
 use unirun_if::{constants::MAIN_APP_ID, path, socket::connect_and_write};
 
+use crate::utils::{build_socket_service, launch_plugins};
+
 pub const MAIN_WINDOW_TITLE: &str = "UniRun";
 
-fn main() {
+fn main() -> Result<(), glib::Error> {
     env_logger::init();
 
-    ctrlc::set_handler(move || {
-        debug!("Ctrl-C shutdown");
-        connect_and_write("quit").unwrap();
+    ctrlc::set_handler(|| {
+        info!("Ctrl-C shutdown");
+        if let Err(e) = connect_and_write("quit") {
+            error!("Failed to send quit command: {}", e);
+        }
     })
-    .unwrap_or_else(|e| {
-        error!("{}", e);
-        panic!()
-    });
-
-    debug!("Starting");
+    .expect("Error setting Ctrl-C handler");
 
     let runtime_data = Rc::new(RefCell::new(RuntimeData::default()));
 
-    let application = Rc::new(Application::new(Some(MAIN_APP_ID), Default::default()));
+    let socket_service = build_socket_service(runtime_data.clone())?;
+    socket_service.start();
 
-    runtime_data
-        .borrow_mut()
-        .application
-        .replace(application.clone());
+    launch_plugins();
 
-    application.connect_activate(move |app| {
-        debug!("Application activate");
+    let application = runtime_data.borrow().application.clone();
 
-        gui::build_ui(app, runtime_data.clone());
-    });
+    application.connect_activate(clone!(
+        #[strong]
+        runtime_data,
+        move |app| {
+            info!("Application activate");
 
-    application.connect_shutdown(|_app| {
-        debug!("Application shutdown");
-
-        // FIXME
-        // spawn new unuirun instance kills all instances
-        // this removes socket if there is another instance running
-        let path = path::socket();
-        if path.exists() {
-            debug!("Removing socket file");
-            fs::remove_file(path).unwrap();
+            if let Err(e) = gui::build_ui(app.clone(), runtime_data.clone()) {
+                error!("Failed to build UI: {}", e);
+                panic!("{}", e);
+            }
         }
+    ));
+
+    application.connect_shutdown(|_| {
+        info!("Application shutdown");
+        remove_socket_file();
     });
 
-    debug!("Application run");
     application.run();
 
-    debug!("Ending");
+    Ok(())
+}
+
+// FIXME
+// spawn new unirun instance kills all instances
+// this removes socket if there is another instance running
+fn remove_socket_file() {
+    let path = path::socket();
+    if path.exists() {
+        debug!("Removing socket file");
+        if let Err(e) = fs::remove_file(&path) {
+            error!("Failed to remove socket file: {}", e);
+        }
+    }
 }

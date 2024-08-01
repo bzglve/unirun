@@ -72,7 +72,7 @@ where
 
 impl From<AppInfo> for Match {
     fn from(val: AppInfo) -> Self {
-        Match::new(
+        Self::new(
             &val.display_name,
             val.description.as_deref(),
             val.icon.as_deref(),
@@ -83,7 +83,7 @@ impl From<AppInfo> for Match {
 
 impl From<&AppInfo> for Match {
     fn from(val: &AppInfo) -> Self {
-        Match::new(
+        Self::new(
             &val.display_name,
             val.description.as_deref(),
             val.icon.as_deref(),

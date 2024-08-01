@@ -1,70 +1,50 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
-
-use gtk::{
-    gio,
-    glib::{self, clone},
-    prelude::IOStreamExt,
+use std::{
+    cell::RefCell, env::current_exe, fs::read_dir, os::unix::fs::PermissionsExt, path::PathBuf,
+    process::Command, rc::Rc,
 };
+
+use gtk::{gio, glib, prelude::*};
 #[allow(unused_imports)]
 use log::*;
-use unirun_if::{path, socket::stream_read_async};
+use unirun_if::{path, socket::stream_read_future};
 
 use crate::{gui::on_entry_changed, types::RuntimeData};
 
-pub fn handle_socket_data(data: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
-    use gtk::prelude::ApplicationExt;
-
+fn handle_socket_data(data: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
     match data {
-        "quit" => {
-            if let Some(app) = &runtime_data.borrow().application {
-                app.quit()
-            }
-        }
-        _ => warn!("Received unknown data: ({:?}). Ignoring", data),
+        "quit" => runtime_data.borrow().application.quit(),
+        _ => warn!("Received unknown data: {:?}. Ignoring", data),
     }
 }
 
-pub fn build_socket_service(runtime_data: Rc<RefCell<RuntimeData>>) -> gio::SocketService {
-    use gio::prelude::{SocketListenerExt, SocketServiceExt};
-
-    debug!("Building socket service");
-
+pub fn build_socket_service(
+    runtime_data: Rc<RefCell<RuntimeData>>,
+) -> Result<gio::SocketService, glib::Error> {
     let socket_path = path::socket();
-    debug!("socket_path={}", socket_path.to_string_lossy());
-
     let socket_service = gio::SocketService::new();
 
-    socket_service
-        .add_address(
-            &gio::UnixSocketAddress::new(&socket_path),
-            gio::SocketType::Stream,
-            gio::SocketProtocol::Default,
-            glib::Object::NONE,
-        )
-        .unwrap_or_else(|e| {
-            error!("{}", e);
-            panic!()
-        });
+    socket_service.add_address(
+        &gio::UnixSocketAddress::new(&socket_path),
+        gio::SocketType::Stream,
+        gio::SocketProtocol::Default,
+        glib::Object::NONE,
+    )?;
 
-    socket_service.connect_incoming(move |_service, connection, _obj| {
-        debug!("Got new connection");
-        handle_new_connection(connection, runtime_data.clone());
+    socket_service.connect_incoming(move |_, connection, _| {
+        handle_new_connection(connection.clone(), runtime_data.clone());
         true
     });
 
-    socket_service
+    Ok(socket_service)
 }
 
-pub fn handle_new_connection(
-    connection: &gio::SocketConnection,
+fn handle_new_connection(
+    connection: gio::SocketConnection,
     runtime_data: Rc<RefCell<RuntimeData>>,
 ) {
-    use gio::prelude::{SocketConnectionExt, SocketExt};
-
     let creds = connection.socket().credentials().unwrap_or_default();
-    debug!("Credentials: {:#?}", creds.to_str());
 
-    let pid = creds.unix_pid().expect("Failed to read proceess Id") as u64;
+    let pid = creds.unix_pid().expect("Failed to read process ID") as u64;
     if std::process::id() as u64 == pid {
         handle_new_connection_from_self(connection, runtime_data.clone());
     } else {
@@ -76,27 +56,20 @@ pub fn handle_new_connection(
     }
 }
 
-pub fn handle_new_connection_from_self(
-    connection: &impl IOStreamExt,
+fn handle_new_connection_from_self(
+    connection: impl IOStreamExt,
     runtime_data: Rc<RefCell<RuntimeData>>,
 ) {
-    // TODO test with `glib::spawn_future_local()` and blocking
-    stream_read_async(
-        &connection.input_stream(),
-        clone!(
-            #[strong]
-            runtime_data,
-            move |data| {
-                let data = data.unwrap_or_else(|d| {
-                    error!("{}", d);
-                    panic!()
-                });
-                debug!("self> {:?}", data);
+    glib::spawn_future_local(async move {
+        let data = stream_read_future(&connection.input_stream())
+            .await
+            .unwrap_or_else(|e| {
+                error!("{}", e);
+                panic!("{}", e);
+            });
 
-                handle_socket_data(data, runtime_data.clone());
-            }
-        ),
-    );
+        handle_socket_data(&data, runtime_data);
+    });
 }
 
 pub fn build_label(use_markup: bool, label: &str) -> gtk::Label {
@@ -114,7 +87,6 @@ pub fn build_label(use_markup: bool, label: &str) -> gtk::Label {
 
 pub fn build_image(icon: &str) -> gtk::Image {
     let mut match_image = gtk::Image::builder().pixel_size(32);
-
     let path = PathBuf::from(icon);
 
     match_image = if path.is_absolute() {
@@ -123,4 +95,39 @@ pub fn build_image(icon: &str) -> gtk::Image {
         match_image.icon_name(icon)
     };
     match_image.build()
+}
+
+pub fn launch_plugins() {
+    if let Ok(current_exe_path) = current_exe() {
+        if let Some(current_dir) = current_exe_path.parent() {
+            if let Ok(entries) = read_dir(current_dir) {
+                let binaries_to_launch = entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_file())
+                    .filter(|path| {
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .map_or(false, |name| name.starts_with("unirun-plugin"))
+                    })
+                    .filter(|path| {
+                        path.metadata()
+                            .map_or(false, |metadata| metadata.permissions().mode() & 0o111 != 0)
+                    })
+                    .collect::<Vec<_>>();
+
+                for binary in binaries_to_launch {
+                    if let Err(e) = Command::new(&binary).spawn() {
+                        error!("Failed to launch {}: {}", binary.display(), e);
+                    }
+                }
+            } else {
+                error!("Failed to read directory: {}", current_dir.display());
+            }
+        } else {
+            error!("Failed to get parent directory of current executable");
+        }
+    } else {
+        error!("Failed to get current executable path");
+    }
 }

@@ -1,15 +1,13 @@
 [package]
 name = "unirun"
-version = "0.1.1-alpha"
+version = "0.1.2-alpha"
 authors = ["Viktor Bezuglov viktory683@gmail.com"]
 edition = "2021"
-# description = "" # TODO
+description = "Yet another runner appliction"
 license = "MIT"
 repository = "https://github.com/bzglve/unirun"
 homepage = "https://github.com/bzglve/unirun"
 documentation = "https://github.com/bzglve/unirun"
-# keywords = [] # TODO
-# categories = [] # TODO
 
 [dependencies]
 unirun-if = { path = "../unirun-interface", package = "unirun-interface" }
