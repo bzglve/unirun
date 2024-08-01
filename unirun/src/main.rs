@@ -11,7 +11,12 @@ use gtk::{
 #[allow(unused_imports)]
 use log::*;
 use types::RuntimeData;
-use unirun_if::{constants::MAIN_APP_ID, path, socket::connect_and_write};
+use unirun_if::{
+    constants::MAIN_APP_ID,
+    package::{Command, Package},
+    path,
+    socket::connect_and_write,
+};
 
 use crate::utils::{build_socket_service, launch_plugins};
 
@@ -22,7 +27,7 @@ fn main() -> Result<(), glib::Error> {
 
     ctrlc::set_handler(|| {
         info!("Ctrl-C shutdown");
-        if let Err(e) = connect_and_write("quit") {
+        if let Err(e) = connect_and_write(Package::Command(Command::Quit)) {
             error!("Failed to send quit command: {}", e);
         }
     })

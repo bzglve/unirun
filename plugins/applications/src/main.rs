@@ -8,7 +8,7 @@ use glib::{self, clone};
 #[allow(unused_imports)]
 use log::*;
 use unirun_if::{
-    match_if::Match,
+    package::{match_if::Match, Command, Package},
     socket::{connection, stream_read_future, stream_write_future},
 };
 
@@ -18,104 +18,113 @@ fn handle_get_data<'a>(
     main_loop: &'a glib::MainLoop,
 ) -> Pin<Box<dyn std::future::Future<Output = ()> + 'a>> {
     Box::pin(async move {
-        let answer = format!("ok: {}", matches.len());
-        debug!("Sending {:?}", answer);
-        stream_write_future(&connection.output_stream(), answer)
+        let pack = Package::Result(Ok(()));
+        debug!("Sending {:?}", pack);
+        stream_write_future(&connection.output_stream(), pack)
             .await
             .unwrap();
 
         let mut i = 0;
         while i < matches.len() {
             let m = matches.get(i).unwrap();
+            let pack = Package::Match(m.clone());
 
             debug!("Sending {}", m);
-            stream_write_future(
-                &connection.output_stream(),
-                serde_json::to_string(&m).unwrap(),
-            )
-            .await
-            .unwrap();
-
-            let response = stream_read_future(&connection.input_stream())
+            stream_write_future(&connection.output_stream(), pack)
                 .await
-                .unwrap_or_else(|e| {
-                    error!("{}", e);
-                    "".to_string()
-                });
-            debug!("Got response: {:?}", response);
+                .unwrap();
 
-            // FIXME workaround
-            if response.starts_with("abort") {
-                warn!("ABORTING");
-                connection.output_stream().clear_pending();
-                return;
-            }
+            let response = stream_read_future(&connection.input_stream()).await;
 
-            if response.as_str() != "ok" {
-                continue;
-            }
-            if response.is_empty() {
-                // FIXME workaround
-                // stop it from connection stop
+            if response.is_err() {
                 main_loop.quit();
             }
+            let response = response.unwrap();
+
+            debug!("Got response: {:?}", response);
+
+            match response {
+                Package::Command(Command::Abort) => {
+                    // FIXME workaround
+                    warn!("ABORTING");
+                    connection.output_stream().clear_pending();
+                    return;
+                }
+                Package::Result(Err(_)) => {
+                    continue;
+                }
+                Package::Result(Ok(_)) => {}
+                _ => unreachable!(),
+            };
 
             i += 1;
         }
+
+        stream_write_future(
+            &connection.output_stream(),
+            Package::Command(Command::Abort),
+        )
+        .await
+        .unwrap();
     })
 }
 
 async fn handle_command(
-    data: &str,
+    command: Command,
     matches: Rc<RefCell<Vec<(AppInfo, Match)>>>,
     connection: &SocketConnection,
     main_loop: &glib::MainLoop,
 ) {
-    if data.starts_with("get_data") {
-        let text = data.trim_start_matches("get_data,").trim();
-        *matches.borrow_mut() = (if text.is_empty() {
-            AppInfo::all()
-        } else {
-            AppInfo::search(text)
-        })
-        .into_iter()
-        .map(|app_info| (app_info.clone(), Match::from(app_info)))
-        .collect();
-
-        let mt = matches
-            .borrow()
-            .clone()
+    match command {
+        Command::GetData(text) => {
+            *matches.borrow_mut() = (if text.is_empty() {
+                AppInfo::all()
+            } else {
+                AppInfo::search(&text)
+            })
             .into_iter()
-            .map(|(_, m)| m)
+            .map(|app_info| (app_info.clone(), Match::from(app_info)))
             .collect();
-        handle_get_data(mt, connection, &main_loop.clone()).await;
-    } else if data.starts_with("activate") {
-        let id = data.trim_start_matches("activate,").trim();
-        if let Some(app_info) =
-            matches
+
+            let mt = matches
                 .borrow()
-                .iter()
-                .find_map(|(a, m)| if m.get_id() == id { Some(a) } else { None })
-        {
-            if let Some(id) = &app_info.id {
-                info!("Launching: {}", id);
-                match gio::DesktopAppInfo::new(id)
-                    .unwrap()
-                    .launch(&[], gio::AppLaunchContext::NONE)
-                {
-                    Ok(_) => stream_write_future(&connection.output_stream(), "ok")
+                .clone()
+                .into_iter()
+                .map(|(_, m)| m)
+                .collect();
+            handle_get_data(mt, connection, &main_loop.clone()).await;
+        }
+        Command::Activate(id) => {
+            if let Some(app_info) =
+                matches
+                    .borrow()
+                    .iter()
+                    .find_map(|(a, m)| if m.get_id() == id { Some(a) } else { None })
+            {
+                if let Some(id) = &app_info.id {
+                    info!("Launching: {}", id);
+                    match gio::DesktopAppInfo::new(id)
+                        .unwrap()
+                        .launch(&[], gio::AppLaunchContext::NONE)
+                    {
+                        Ok(_) => stream_write_future(
+                            &connection.output_stream(),
+                            Package::Result(Ok(())),
+                        )
                         .await
                         .unwrap(),
-                    Err(_) => stream_write_future(&connection.output_stream(), "err")
+                        Err(_) => stream_write_future(
+                            &connection.output_stream(),
+                            Package::Result(Err(())),
+                        )
                         .await
                         .unwrap(),
-                };
+                    };
+                }
             }
         }
-    } else if data.is_empty() {
-        // FIXME workaround
-        // stop it from connection stop
-        main_loop.quit();
+        Command::Abort => {}
+        _ => unreachable!(),
     }
 }
 
@@ -137,11 +146,18 @@ fn main() -> Result<(), glib::Error> {
                     Ok(d) => d,
                     Err(e) => {
                         error!("Failed to read data: {}", e);
+                        main_loop.quit();
                         continue;
                     }
                 };
                 debug!("Received: {:?}", data);
-                handle_command(&data, matches.clone(), &conn, &main_loop).await;
+
+                match data {
+                    Package::Command(command) => {
+                        handle_command(command, matches.clone(), &conn, &main_loop).await
+                    }
+                    _ => unreachable!(),
+                }
             }
         }
     ));

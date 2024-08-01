@@ -2,7 +2,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use gio::prelude::IsA;
 use serde::Serialize;
-use unirun_if::match_if::Match;
+use unirun_if::package::match_if::Match;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct AppInfo {

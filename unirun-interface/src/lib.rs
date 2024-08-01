@@ -1,3 +1,5 @@
+pub mod package;
+
 pub mod constants {
     pub const DOMAIN: &str = "com.bzglve";
     pub const MAIN_APP_ID: &str = "com.bzglve.unirun";
@@ -27,12 +29,14 @@ pub mod path {
 }
 
 pub mod socket {
+    use std::error::Error;
+
     use gio::{
         prelude::{InputStreamExt, OutputStreamExt},
         SocketConnection,
     };
 
-    use crate::{bytes_to_string, constants::SOCKET_BUFFER_SIZE};
+    use crate::{bytes_to_string, constants::SOCKET_BUFFER_SIZE, package::Package};
 
     fn create_buffer(value: &[u8]) -> [u8; SOCKET_BUFFER_SIZE] {
         let mut buffer = [0; SOCKET_BUFFER_SIZE];
@@ -41,61 +45,59 @@ pub mod socket {
         buffer
     }
 
-    pub fn stream_read(stream: &impl InputStreamExt) -> Result<String, glib::Error> {
-        let bytes = stream.read_bytes(SOCKET_BUFFER_SIZE, gio::Cancellable::NONE)?;
-        Ok(bytes_to_string(&bytes))
+    // TODO DRY `stream_read_future`
+    pub fn stream_read(stream: &impl InputStreamExt) -> Result<Package, Box<dyn Error>> {
+        let buffer = stream.read_bytes(SOCKET_BUFFER_SIZE, gio::Cancellable::NONE)?;
+        let json = bytes_to_string(&buffer);
+        let package = serde_json::from_str::<Package>(&json)?;
+        Ok(package)
     }
 
-    pub async fn stream_read_future(stream: &impl InputStreamExt) -> Result<String, glib::Error> {
-        let bytes = stream
+    // TODO DRY `stream_read`
+    pub async fn stream_read_future(
+        stream: &impl InputStreamExt,
+    ) -> Result<Package, Box<dyn Error>> {
+        let buffer = stream
             .read_bytes_future(SOCKET_BUFFER_SIZE, glib::Priority::DEFAULT)
             .await?;
-        Ok(bytes_to_string(&bytes))
+        let json = bytes_to_string(&buffer);
+        let package = serde_json::from_str::<Package>(&json)?;
+        Ok(package)
     }
 
-    // TODO
-    // - [ ] Need to accept parameter as Match
-    // - [ ] So Match have to be wrapped into something that will represent message or etc (like for handling `quit` message)
     pub fn stream_write(
         stream: &impl OutputStreamExt,
-        value: impl AsRef<[u8]>,
-    ) -> Result<isize, glib::Error> {
-        stream.write_bytes(
-            &glib::Bytes::from(&create_buffer(value.as_ref())),
-            gio::Cancellable::NONE,
-        )
+        value: Package,
+    ) -> Result<isize, Box<dyn Error>> {
+        let json = serde_json::to_string(&value)?;
+        let buffer = create_buffer(json.as_ref());
+        Ok(stream.write_bytes(&glib::Bytes::from(&buffer), gio::Cancellable::NONE)?)
     }
 
-    // TODO
-    // - [ ] Need to accept parameter as Match
-    // - [ ] So Match have to be wrapped into something that will represent message or etc (like for handling `quit` message)
     pub async fn stream_write_future(
         stream: &impl OutputStreamExt,
-        value: impl AsRef<[u8]>,
-    ) -> Result<isize, glib::Error> {
-        stream
-            .write_bytes_future(
-                &glib::Bytes::from(&create_buffer(value.as_ref())),
-                glib::Priority::DEFAULT,
-            )
-            .await
+        value: Package,
+    ) -> Result<isize, Box<dyn Error>> {
+        let json = serde_json::to_string(&value)?;
+        let buffer = create_buffer(json.as_ref());
+        Ok(stream
+            .write_bytes_future(&glib::Bytes::from(&buffer), glib::Priority::DEFAULT)
+            .await?)
     }
 
-    pub fn connect_and_write(value: impl AsRef<[u8]> + std::fmt::Debug) -> Result<(), glib::Error> {
+    pub fn connect_and_write(value: Package) -> Result<(), Box<dyn Error>> {
         use gio::prelude::IOStreamExt;
 
         let conn = connection()?;
-        stream_write(&conn.output_stream(), value.as_ref())?;
+        stream_write(&conn.output_stream(), value)?;
         Ok(())
     }
 
-    pub async fn connect_and_write_future(
-        value: impl AsRef<[u8]> + std::fmt::Debug,
-    ) -> Result<(), glib::Error> {
+    pub async fn connect_and_write_future(value: Package) -> Result<(), Box<dyn Error>> {
         use gio::prelude::IOStreamExt;
 
         let conn = connection_future().await?;
-        stream_write_future(&conn.output_stream(), value.as_ref()).await?;
+        stream_write_future(&conn.output_stream(), value).await?;
         Ok(())
     }
 
@@ -124,74 +126,4 @@ pub fn bytes_to_string(bytes: &[u8]) -> String {
         .trim_end_matches(char::from(0))
         .trim()
         .to_string()
-}
-
-pub mod match_if {
-    use serde::{Deserialize, Serialize};
-    use std::fmt::Display;
-    use uuid::Uuid;
-
-    #[derive(Default, Debug, Serialize, Deserialize, Clone)]
-    pub struct Match {
-        // TODO remove public to prevent building without `Self::new()`
-        pub id: String,
-        pub title: String,
-        pub description: Option<String>,
-        pub icon: Option<String>,
-        pub use_pango: bool,
-    }
-
-    impl Match {
-        /// Creates a new `Match` instance.
-        ///
-        /// # Parameters
-        ///
-        /// - `title`: The title of the match.
-        /// - `description`: An optional description of the match.
-        /// - `icon`: An optional icon associated with the match.
-        /// - `use_pango`: A flag indicating whether Pango is used.
-        ///
-        /// # Returns
-        ///
-        /// A new `Match` instance.
-        pub fn new(
-            title: &str,
-            description: Option<&str>,
-            icon: Option<&str>,
-            use_pango: bool,
-        ) -> Self {
-            Self {
-                id: Self::new_id(),
-                title: title.to_owned(),
-                description: description.map(str::to_owned),
-                icon: icon.map(str::to_owned),
-                use_pango,
-            }
-        }
-
-        pub fn get_id(&self) -> &str {
-            &self.id
-        }
-
-        /// Generates a new ID for the match and updates the existing one.
-        ///
-        /// # Returns
-        ///
-        /// The new UUID of the match.
-        pub fn update_id(&mut self) -> String {
-            let new_id = Self::new_id();
-            let _ = std::mem::replace(&mut self.id, new_id.clone());
-            new_id
-        }
-
-        fn new_id() -> String {
-            Uuid::new_v4().to_string()
-        }
-    }
-
-    impl Display for Match {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "({}, {})", self.id, self.title)
-        }
-    }
 }

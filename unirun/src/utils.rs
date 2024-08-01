@@ -1,6 +1,6 @@
 use std::{
-    cell::RefCell, env::current_exe, error::Error, fs::read_dir, os::unix::fs::PermissionsExt,
-    path::PathBuf, process::Command, rc::Rc,
+    cell::RefCell, env::current_exe, fs::read_dir, os::unix::fs::PermissionsExt, path::PathBuf,
+    process, rc::Rc,
 };
 
 use gtk::{
@@ -11,7 +11,7 @@ use gtk::{
 #[allow(unused_imports)]
 use log::*;
 use unirun_if::{
-    match_if::Match,
+    package::{match_if::Match, Command, Package},
     path,
     socket::{connect_and_write_future, stream_read_future, stream_write_future},
 };
@@ -29,10 +29,9 @@ pub fn build_socket_service(
             connection: impl IOStreamExt,
             runtime_data: Rc<RefCell<RuntimeData>>,
         ) {
-            fn handle_socket_data(data: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
-                match data {
-                    "quit" => runtime_data.borrow().application.quit(),
-                    _ => warn!("Received unknown data: {:?}. Ignoring", data),
+            fn handle_socket_data(data: &Package, runtime_data: Rc<RefCell<RuntimeData>>) {
+                if let Package::Command(Command::Quit) = data {
+                    runtime_data.borrow().application.quit()
                 }
             }
 
@@ -125,7 +124,7 @@ pub fn launch_plugins() {
                     .collect::<Vec<_>>();
 
                 for binary in binaries_to_launch {
-                    if let Err(e) = Command::new(&binary).spawn() {
+                    if let Err(e) = process::Command::new(&binary).spawn() {
                         error!("Failed to launch {}: {}", binary.display(), e);
                     }
                 }
@@ -170,22 +169,6 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
     //         .collect();
     // }
 
-    async fn handle_stream_message(
-        conn: &gio::SocketConnection,
-        match_store: &gio::ListStore,
-    ) -> Result<(), Box<dyn Error>> {
-        let s = stream_read_future(&conn.input_stream()).await?;
-        let m = serde_json::from_str::<Match>(&s)?;
-
-        match_store.append(&{
-            let gmatch = GMatch::from(m);
-            gmatch.set_plugin_pid(conn.socket().credentials()?.unix_pid()? as u64);
-            gmatch
-        });
-
-        Ok(())
-    }
-
     let mut runtime_data = runtime_data.borrow_mut();
 
     clear_entry_pool(&mut runtime_data);
@@ -205,44 +188,48 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                 #[strong]
                 match_store,
                 async move {
-                    stream_write_future(&conn.output_stream(), "abort")
+                    stream_write_future(&conn.output_stream(), Package::Command(Command::Abort))
                         .await
                         .unwrap();
 
-                    stream_write_future(&conn.output_stream(), format!("get_data,{}", text))
-                        .await
-                        .unwrap();
+                    stream_write_future(
+                        &conn.output_stream(),
+                        Package::Command(Command::GetData(text.to_string())),
+                    )
+                    .await
+                    .unwrap();
 
                     // FIXME is this workaround?
-                    let mut response = String::new();
-                    while !response.starts_with("ok:") {
-                        response = stream_read_future(&conn.input_stream()).await.unwrap();
+                    loop {
+                        if let Package::Result(Ok(_)) =
+                            stream_read_future(&conn.input_stream()).await.unwrap()
+                        {
+                            break;
+                        }
                     }
 
-                    let count = response
-                        .trim_start_matches("ok:")
-                        .trim()
-                        .parse::<usize>()
-                        .unwrap_or_else(|_| {
-                            error!(
-                                "Failed to read number of packages from {:?}. Using default",
-                                response
-                            );
-                            0
-                        });
+                    loop {
+                        let response = stream_read_future(&conn.input_stream()).await.unwrap();
+                        match response {
+                            Package::Match(m) => {
+                                match_store.append(&{
+                                    let gmatch = GMatch::from(m);
+                                    gmatch.set_plugin_pid(
+                                        conn.socket().credentials().unwrap().unix_pid().unwrap()
+                                            as u64,
+                                    );
+                                    gmatch
+                                });
 
-                    for _ in 0..count {
-                        match handle_stream_message(&conn, &match_store).await {
-                            Ok(_) => stream_write_future(&conn.output_stream(), "ok")
-                                .await
-                                .unwrap(),
-                            Err(e) => {
-                                error!("Error handling stream message: {}", e);
-                                stream_write_future(&conn.output_stream(), "err")
+                                stream_write_future(&conn.output_stream(), Package::Result(Ok(())))
                                     .await
-                                    .unwrap()
+                                    .unwrap();
                             }
-                        };
+                            Package::Command(Command::Abort) => {
+                                break;
+                            }
+                            _ => unreachable!(),
+                        }
                     }
                 }
             )))
@@ -272,7 +259,7 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
         let rmatch: Match = gmatch.clone().into();
         stream_write_future(
             &connection.output_stream(),
-            format!("activate,{}", rmatch.get_id()),
+            Package::Command(Command::Activate(rmatch.get_id().to_owned())),
         )
         .await
         .unwrap();
@@ -281,8 +268,10 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
             .await
             .unwrap();
 
-        if response == "ok" {
-            connect_and_write_future("quit").await.unwrap();
+        if let Package::Result(Ok(_)) = response {
+            connect_and_write_future(Package::Command(Command::Quit))
+                .await
+                .unwrap();
         }
     });
 }

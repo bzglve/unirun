@@ -9,7 +9,10 @@ use gtk::{
 use gtk_layer_shell::LayerShell;
 #[allow(unused_imports)]
 use log::*;
-use unirun_if::socket::connect_and_write_future;
+use unirun_if::{
+    package::{Command, Package},
+    socket::connect_and_write_future,
+};
 
 use crate::{
     types::{gmatch::GMatch, RuntimeData},
@@ -44,9 +47,11 @@ fn build_window(app: impl IsA<gtk::Application>) -> gtk::ApplicationWindow {
     ) {
         connect_key_press_events(widget, event_controller_key, move |keyval| match keyval {
             Key::Escape => {
-                glib::spawn_future_local(
-                    async move { connect_and_write_future("quit").await.unwrap() },
-                );
+                glib::spawn_future_local(async move {
+                    connect_and_write_future(Package::Command(Command::Quit))
+                        .await
+                        .unwrap()
+                });
                 glib::Propagation::Stop
             }
             _ => glib::Propagation::Proceed,
@@ -79,7 +84,9 @@ where
             move |keyval| match keyval {
                 Key::Escape => {
                     glib::spawn_future_local(async move {
-                        connect_and_write_future("quit").await.unwrap()
+                        connect_and_write_future(Package::Command(Command::Quit))
+                            .await
+                            .unwrap()
                     });
                     glib::Propagation::Stop
                 }

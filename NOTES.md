@@ -1,22 +1,26 @@
 #
 
+<!-- TODO add Abort answer? -->
 ```mermaid
 sequenceDiagram
     title Get all data from plugin
     participant runner
     participant plugin
 
-    runner ->> plugin: get_data,entry_text
-    plugin ->> runner: Ok(count)
+    runner ->> plugin: GetData(entry_text)
+    plugin ->> runner: Ok
     Note over plugin: count - how many packages will be send
     loop Data transfer
-        plugin ->> runner: Data(0)
+        plugin ->> runner: Data
         runner ->> plugin: Ok
         Note over runner: `Ok` like runner understands data and accepted it
-        plugin ->> runner: Data(1)
+        plugin ->> runner: Data
         runner ->> plugin: Err
-        plugin ->> runner: Data(1)
+        plugin ->> runner: Data
         runner ->> plugin: Ok
+        plugin ->> runner: Data
+        runner ->> plugin: Ok
+        plugin ->> runner: Abort
     end
 ```
 
@@ -26,17 +30,17 @@ sequenceDiagram
     participant runner
     participant plugin
 
-    runner ->> plugin: get_data,entry_text
-    plugin ->> runner: Ok(count)
+    runner ->> plugin: GetData(entry_text)
+    plugin ->> runner: Ok
     loop Data transfer
-        plugin ->> runner: Data(0)
+        plugin ->> runner: Data
         runner ->> plugin: Ok
-        plugin ->> runner: Data(1)
+        plugin ->> runner: Data
         runner ->> plugin: Ok
-        plugin ->> runner: Data(1)
-        runner ->> plugin: abort
+        plugin ->> runner: Data
+        runner ->> plugin: Abort
     end
-        runner ->> plugin: get_data,new_entry_text
+    runner ->> plugin: GetData(new_entry_text)
 ```
 
 ```mermaid
@@ -45,8 +49,8 @@ sequenceDiagram
     participant runner
     participant plugin
 
-    runner ->> plugin: activate,UUID
+    runner ->> plugin: Activate(UUID)
     plugin ->> runner: Ok
-    runner ->> plugin: activate,UUID
+    runner ->> plugin: Activate(UUID)
     plugin ->> runner: Err
 ```

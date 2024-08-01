@@ -4,7 +4,7 @@ use gtk::{
     prelude::{ObjectExt, ToValue},
 };
 use std::cell::{Cell, RefCell};
-use unirun_if::match_if::Match;
+use unirun_if::package::match_if::Match;
 
 use crate::utils::{build_image, build_label};
 
