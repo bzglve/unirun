@@ -11,7 +11,7 @@ use gtk::{
 #[allow(unused_imports)]
 use log::*;
 use unirun_if::{
-    package::{match_if::Match, Command, Package},
+    package::{match_if::Match, Command, Package, Payload},
     path,
     socket::{connect_and_write_future, stream_read_future, stream_write_future},
 };
@@ -29,8 +29,8 @@ pub fn build_socket_service(
             connection: impl IOStreamExt,
             runtime_data: Rc<RefCell<RuntimeData>>,
         ) {
-            fn handle_socket_data(data: &Package, runtime_data: Rc<RefCell<RuntimeData>>) {
-                if let Package::Command(Command::Quit) = data {
+            fn handle_socket_data(data: &Payload, runtime_data: Rc<RefCell<RuntimeData>>) {
+                if let Payload::Command(Command::Quit) = data {
                     runtime_data.borrow().application.quit()
                 }
             }
@@ -43,7 +43,7 @@ pub fn build_socket_service(
                         panic!("{}", e);
                     });
 
-                handle_socket_data(&data, runtime_data);
+                handle_socket_data(&data.payload, runtime_data);
             });
         }
 
@@ -188,30 +188,39 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                 #[strong]
                 match_store,
                 async move {
-                    stream_write_future(&conn.output_stream(), Package::Command(Command::Abort))
-                        .await
-                        .unwrap();
-
                     stream_write_future(
                         &conn.output_stream(),
-                        Package::Command(Command::GetData(text.to_string())),
+                        Package::new(Payload::Command(Command::Abort)),
                     )
                     .await
                     .unwrap();
 
+                    let request =
+                        Package::new(Payload::Command(Command::GetData(text.to_string())));
+                    stream_write_future(&conn.output_stream(), request.clone())
+                        .await
+                        .unwrap();
+
+                    let request_id = request.get_id();
                     // FIXME is this workaround?
                     loop {
-                        if let Package::Result(Ok(_)) =
-                            stream_read_future(&conn.input_stream()).await.unwrap()
+                        if let Payload::Result(Ok(response_id)) =
+                            stream_read_future(&conn.input_stream())
+                                .await
+                                .unwrap()
+                                .payload
                         {
-                            break;
+                            if request_id == response_id {
+                                break;
+                            }
                         }
                     }
 
                     loop {
                         let response = stream_read_future(&conn.input_stream()).await.unwrap();
-                        match response {
-                            Package::Match(m) => {
+                        let response_id = response.get_id();
+                        match response.payload {
+                            Payload::Match(m) => {
                                 match_store.append(&{
                                     let gmatch = GMatch::from(m);
                                     gmatch.set_plugin_pid(
@@ -221,11 +230,14 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                                     gmatch
                                 });
 
-                                stream_write_future(&conn.output_stream(), Package::Result(Ok(())))
-                                    .await
-                                    .unwrap();
+                                stream_write_future(
+                                    &conn.output_stream(),
+                                    Package::new(Payload::Result(Ok(response_id))),
+                                )
+                                .await
+                                .unwrap();
                             }
-                            Package::Command(Command::Abort) => {
+                            Payload::Command(Command::Abort) => {
                                 break;
                             }
                             _ => unreachable!(),
@@ -257,21 +269,24 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
             .unwrap();
 
         let rmatch: Match = gmatch.clone().into();
-        stream_write_future(
-            &connection.output_stream(),
-            Package::Command(Command::Activate(rmatch.get_id().to_owned())),
-        )
-        .await
-        .unwrap();
+        let request = Package::new(Payload::Command(Command::Activate(
+            rmatch.get_id().to_owned(),
+        )));
+        stream_write_future(&connection.output_stream(), request.clone())
+            .await
+            .unwrap();
+        let request_id = request.get_id();
 
         let response = stream_read_future(&connection.input_stream())
             .await
             .unwrap();
 
-        if let Package::Result(Ok(_)) = response {
-            connect_and_write_future(Package::Command(Command::Quit))
-                .await
-                .unwrap();
+        if let Payload::Result(Ok(response_id)) = response.payload {
+            if response_id == request_id {
+                connect_and_write_future(Package::new(Payload::Command(Command::Quit)))
+                    .await
+                    .unwrap();
+            }
         }
     });
 }

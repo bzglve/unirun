@@ -8,17 +8,18 @@ use glib::{self, clone};
 #[allow(unused_imports)]
 use log::*;
 use unirun_if::{
-    package::{match_if::Match, Command, Package},
+    package::{match_if::Match, Command, Package, PackageId, Payload},
     socket::{connection, stream_read_future, stream_write_future},
 };
 
 fn handle_get_data<'a>(
     matches: Vec<Match>,
+    pack_id: PackageId,
     connection: &'a SocketConnection,
     main_loop: &'a glib::MainLoop,
 ) -> Pin<Box<dyn std::future::Future<Output = ()> + 'a>> {
     Box::pin(async move {
-        let pack = Package::Result(Ok(()));
+        let pack = Package::new(Payload::Result(Ok(pack_id)));
         debug!("Sending {:?}", pack);
         stream_write_future(&connection.output_stream(), pack)
             .await
@@ -27,7 +28,7 @@ fn handle_get_data<'a>(
         let mut i = 0;
         while i < matches.len() {
             let m = matches.get(i).unwrap();
-            let pack = Package::Match(m.clone());
+            let pack = Package::new(Payload::Match(m.clone()));
 
             debug!("Sending {}", m);
             stream_write_future(&connection.output_stream(), pack)
@@ -43,17 +44,17 @@ fn handle_get_data<'a>(
 
             debug!("Got response: {:?}", response);
 
-            match response {
-                Package::Command(Command::Abort) => {
+            match response.payload {
+                Payload::Command(Command::Abort) => {
                     // FIXME workaround
                     warn!("ABORTING");
                     connection.output_stream().clear_pending();
                     return;
                 }
-                Package::Result(Err(_)) => {
+                Payload::Result(Err(_)) => {
                     continue;
                 }
-                Package::Result(Ok(_)) => {}
+                Payload::Result(Ok(_)) => {}
                 _ => unreachable!(),
             };
 
@@ -62,7 +63,7 @@ fn handle_get_data<'a>(
 
         stream_write_future(
             &connection.output_stream(),
-            Package::Command(Command::Abort),
+            Package::new(Payload::Command(Command::Abort)),
         )
         .await
         .unwrap();
@@ -71,6 +72,7 @@ fn handle_get_data<'a>(
 
 async fn handle_command(
     command: Command,
+    pack_id: PackageId,
     matches: Rc<RefCell<Vec<(AppInfo, Match)>>>,
     connection: &SocketConnection,
     main_loop: &glib::MainLoop,
@@ -92,7 +94,7 @@ async fn handle_command(
                 .into_iter()
                 .map(|(_, m)| m)
                 .collect();
-            handle_get_data(mt, connection, &main_loop.clone()).await;
+            handle_get_data(mt, pack_id, connection, &main_loop.clone()).await;
         }
         Command::Activate(id) => {
             if let Some(app_info) =
@@ -109,13 +111,13 @@ async fn handle_command(
                     {
                         Ok(_) => stream_write_future(
                             &connection.output_stream(),
-                            Package::Result(Ok(())),
+                            Package::new(Payload::Result(Ok(pack_id))),
                         )
                         .await
                         .unwrap(),
                         Err(_) => stream_write_future(
                             &connection.output_stream(),
-                            Package::Result(Err(())),
+                            Package::new(Payload::Result(Err(pack_id))),
                         )
                         .await
                         .unwrap(),
@@ -152,9 +154,16 @@ fn main() -> Result<(), glib::Error> {
                 };
                 debug!("Received: {:?}", data);
 
-                match data {
-                    Package::Command(command) => {
-                        handle_command(command, matches.clone(), &conn, &main_loop).await
+                match &data.payload {
+                    Payload::Command(command) => {
+                        handle_command(
+                            command.clone(),
+                            data.get_id(),
+                            matches.clone(),
+                            &conn,
+                            &main_loop,
+                        )
+                        .await
                     }
                     _ => unreachable!(),
                 }

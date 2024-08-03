@@ -4,7 +4,7 @@ use gtk::{
     prelude::{ObjectExt, ToValue},
 };
 use std::cell::{Cell, RefCell};
-use unirun_if::package::match_if::Match;
+use unirun_if::package::{match_if::Match, MatchId};
 
 use crate::utils::{build_image, build_label};
 
@@ -180,7 +180,7 @@ impl From<Match> for GMatch {
     fn from(value: Match) -> Self {
         let item = Self::new();
 
-        item.set_id(value.get_id());
+        item.set_id(&value.get_id().to_string());
         item.set_title(&value.title);
         item.set_description(value.description.as_deref());
         item.set_icon(value.icon.as_deref());
@@ -195,7 +195,7 @@ impl From<Match> for GMatch {
 impl From<GMatch> for Match {
     fn from(val: GMatch) -> Self {
         Match {
-            id: val.get_id(),
+            id: MatchId::from(val.get_id().as_str()),
             title: val.get_title(),
             description: val.get_description(),
             icon: val.get_icon(),

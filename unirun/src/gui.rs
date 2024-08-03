@@ -10,7 +10,7 @@ use gtk_layer_shell::LayerShell;
 #[allow(unused_imports)]
 use log::*;
 use unirun_if::{
-    package::{Command, Package},
+    package::{Command, Package, Payload},
     socket::connect_and_write_future,
 };
 
@@ -48,7 +48,7 @@ fn build_window(app: impl IsA<gtk::Application>) -> gtk::ApplicationWindow {
         connect_key_press_events(widget, event_controller_key, move |keyval| match keyval {
             Key::Escape => {
                 glib::spawn_future_local(async move {
-                    connect_and_write_future(Package::Command(Command::Quit))
+                    connect_and_write_future(Package::new(Payload::Command(Command::Quit)))
                         .await
                         .unwrap()
                 });
@@ -84,7 +84,7 @@ where
             move |keyval| match keyval {
                 Key::Escape => {
                     glib::spawn_future_local(async move {
-                        connect_and_write_future(Package::Command(Command::Quit))
+                        connect_and_write_future(Package::new(Payload::Command(Command::Quit)))
                             .await
                             .unwrap()
                     });

@@ -1,32 +1,90 @@
-// TODO add some serde tags to have cleaner json
+use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
-#[derive(Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Default)]
+pub struct Uuid(String);
+
+impl Uuid {
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+}
+
+impl Display for Uuid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// FIXME why?
+impl From<&str> for Uuid {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+pub type PackageId = Uuid;
+pub type MatchId = Uuid;
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub enum Command {
+    #[serde(rename = "quit")]
     Quit,
-    Activate(String),
+
+    #[serde(rename = "activate")]
+    Activate(MatchId),
+
+    #[serde(rename = "get_data")]
     GetData(String),
+
+    #[serde(rename = "abort")]
     Abort,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub enum Package {
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub enum Payload {
+    #[serde(rename = "command")]
     Command(Command),
-    Result(Result<(), ()>),
+
+    #[serde(rename = "result")]
+    Result(Result<PackageId, PackageId>),
+
+    #[serde(rename = "match")]
     Match(match_if::Match),
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct Package {
+    id: PackageId,
+
+    #[serde(flatten)]
+    pub payload: Payload,
+}
+
+impl Package {
+    pub fn new(payload: Payload) -> Self {
+        Self {
+            id: PackageId::new(),
+            payload,
+        }
+    }
+
+    pub fn get_id(&self) -> PackageId {
+        self.id.clone()
+    }
 }
 
 pub mod match_if {
     use serde::{Deserialize, Serialize};
     use std::fmt::Display;
-    use uuid::Uuid;
 
-    #[derive(Default, Debug, Serialize, Deserialize, Clone)]
+    use super::MatchId;
+
+    #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq)]
     pub struct Match {
         // TODO remove public to prevent building without `Self::new()`
-        pub id: String,
+        pub id: MatchId,
         pub title: String,
         pub description: Option<String>,
         pub icon: Option<String>,
@@ -53,7 +111,7 @@ pub mod match_if {
             use_pango: bool,
         ) -> Self {
             Self {
-                id: Self::new_id(),
+                id: MatchId::new(),
                 title: title.to_owned(),
                 description: description.map(str::to_owned),
                 icon: icon.map(str::to_owned),
@@ -61,8 +119,8 @@ pub mod match_if {
             }
         }
 
-        pub fn get_id(&self) -> &str {
-            &self.id
+        pub fn get_id(&self) -> MatchId {
+            self.id.clone()
         }
 
         /// Generates a new ID for the match and updates the existing one.
@@ -70,14 +128,10 @@ pub mod match_if {
         /// # Returns
         ///
         /// The new UUID of the match.
-        pub fn update_id(&mut self) -> String {
-            let new_id = Self::new_id();
-            let _ = std::mem::replace(&mut self.id, new_id.clone());
+        pub fn update_id(&mut self) -> MatchId {
+            let new_id = MatchId::new();
+            self.id = new_id.clone();
             new_id
-        }
-
-        fn new_id() -> String {
-            Uuid::new_v4().to_string()
         }
     }
 

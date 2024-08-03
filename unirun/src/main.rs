@@ -13,7 +13,7 @@ use log::*;
 use types::RuntimeData;
 use unirun_if::{
     constants::MAIN_APP_ID,
-    package::{Command, Package},
+    package::{Command, Package, Payload},
     path,
     socket::connect_and_write,
 };
@@ -27,7 +27,7 @@ fn main() -> Result<(), glib::Error> {
 
     ctrlc::set_handler(|| {
         info!("Ctrl-C shutdown");
-        if let Err(e) = connect_and_write(Package::Command(Command::Quit)) {
+        if let Err(e) = connect_and_write(Package::new(Payload::Command(Command::Quit))) {
             error!("Failed to send quit command: {}", e);
         }
     })
