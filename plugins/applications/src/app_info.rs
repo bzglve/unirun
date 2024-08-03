@@ -2,7 +2,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use gio::prelude::IsA;
 use serde::Serialize;
-use unirun_if::package::match_if::Match;
+use unirun_if::package::Hit;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct AppInfo {
@@ -70,7 +70,7 @@ where
     }
 }
 
-impl From<AppInfo> for Match {
+impl From<AppInfo> for Hit {
     fn from(val: AppInfo) -> Self {
         Self::new(
             &val.display_name,
@@ -81,7 +81,7 @@ impl From<AppInfo> for Match {
     }
 }
 
-impl From<&AppInfo> for Match {
+impl From<&AppInfo> for Hit {
     fn from(val: &AppInfo) -> Self {
         Self::new(
             &val.display_name,

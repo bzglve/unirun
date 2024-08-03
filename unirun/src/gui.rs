@@ -15,7 +15,7 @@ use unirun_if::{
 };
 
 use crate::{
-    types::{gmatch::GMatch, RuntimeData},
+    types::{ghit::GHit, RuntimeData},
     utils::{handle_selection_activation, on_entry_changed},
     MAIN_WINDOW_TITLE,
 };
@@ -121,11 +121,11 @@ where
     let main_list = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::Single)
         .build();
-    main_list.bind_model(Some(&model), move |match_row| {
-        match_row
+    main_list.bind_model(Some(&model), move |hit_tow| {
+        hit_tow
             .clone()
-            .downcast::<GMatch>()
-            .expect("Can't downcast glib::Object to GMatch")
+            .downcast::<GHit>()
+            .expect("Can't downcast glib::Object to GHit")
             .into()
     });
 
@@ -145,7 +145,7 @@ pub fn build_ui(
     runtime_data: Rc<RefCell<RuntimeData>>,
 ) -> Result<(), glib::Error> {
     let main_list = build_main_list(
-        runtime_data.borrow().match_store.clone(),
+        runtime_data.borrow().hit_store.clone(),
         clone!(
             #[strong]
             runtime_data,

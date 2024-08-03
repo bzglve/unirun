@@ -4,7 +4,7 @@ use gtk::{
     prelude::{ObjectExt, ToValue},
 };
 use std::cell::{Cell, RefCell};
-use unirun_if::package::{match_if::Match, MatchId};
+use unirun_if::package::{Hit, HitId};
 
 use crate::utils::{build_image, build_label};
 
@@ -12,7 +12,7 @@ mod imp {
     use super::*;
 
     #[derive(Default)]
-    pub struct GMatch {
+    pub struct GHit {
         id: RefCell<String>,
         title: RefCell<String>,
         description: RefCell<Option<String>>,
@@ -22,13 +22,13 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for GMatch {
-        const NAME: &'static str = "GMatch";
+    impl ObjectSubclass for GHit {
+        const NAME: &'static str = "GHit";
 
-        type Type = super::GMatch;
+        type Type = super::GHit;
     }
 
-    impl ObjectImpl for GMatch {
+    impl ObjectImpl for GHit {
         fn properties() -> &'static [glib::ParamSpec] {
             use std::sync::OnceLock;
 
@@ -112,11 +112,11 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct GMatch(ObjectSubclass<imp::GMatch>);
+    pub struct GHit(ObjectSubclass<imp::GHit>);
 }
 
 // TODO does we need so much setters-getters? Is there any way to simplify this
-impl GMatch {
+impl GHit {
     pub fn new() -> Self {
         glib::Object::new()
     }
@@ -170,14 +170,14 @@ impl GMatch {
     }
 }
 
-impl Default for GMatch {
+impl Default for GHit {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl From<Match> for GMatch {
-    fn from(value: Match) -> Self {
+impl From<Hit> for GHit {
+    fn from(value: Hit) -> Self {
         let item = Self::new();
 
         item.set_id(&value.id.to_string());
@@ -192,10 +192,10 @@ impl From<Match> for GMatch {
     }
 }
 
-impl From<GMatch> for Match {
-    fn from(val: GMatch) -> Self {
-        Match {
-            id: MatchId::from(val.get_id().as_str()),
+impl From<GHit> for Hit {
+    fn from(val: GHit) -> Self {
+        Self {
+            id: HitId::from(val.get_id().as_str()),
             title: val.get_title(),
             description: val.get_description(),
             icon: val.get_icon(),
@@ -204,8 +204,8 @@ impl From<GMatch> for Match {
     }
 }
 
-impl From<GMatch> for gtk::Widget {
-    fn from(value: GMatch) -> Self {
+impl From<GHit> for gtk::Widget {
+    fn from(value: GHit) -> Self {
         use gtk::prelude::BoxExt;
 
         let hbox = gtk::Box::builder()
@@ -214,13 +214,13 @@ impl From<GMatch> for gtk::Widget {
             .spacing(4)
             .build();
 
-        let match_box = gtk::Box::builder()
+        let hit_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(12)
             .build();
 
         if let Some(icon) = value.get_icon() {
-            match_box.append(&build_image(&icon));
+            hit_box.append(&build_image(&icon));
         }
 
         let vbox = gtk::Box::builder()
@@ -235,8 +235,8 @@ impl From<GMatch> for gtk::Widget {
             vbox.append(&build_label(value.get_use_pango(), &desc));
         }
 
-        match_box.append(&vbox);
-        hbox.append(&match_box);
+        hit_box.append(&vbox);
+        hbox.append(&hit_box);
 
         hbox.into()
     }

@@ -10,13 +10,13 @@ sequenceDiagram
     runner ->> plugin: GetData(entry_text)
     plugin ->> runner: Ok
     loop Data transfer
-        plugin ->> runner: Match 0
+        plugin ->> runner: Hit 0
         runner ->> plugin: Ok
-        plugin ->> runner: Match 1
+        plugin ->> runner: Hit 1
         runner ->> plugin: Err
-        plugin ->> runner: Match 1
+        plugin ->> runner: Hit 1
         runner ->> plugin: Ok
-        plugin ->> runner: Match 2
+        plugin ->> runner: Hit 2
         runner ->> plugin: Ok
         plugin ->> runner: Abort
     end
@@ -31,11 +31,11 @@ sequenceDiagram
     runner ->> plugin: GetData(entry_text)
     plugin ->> runner: Ok
     loop Data transfer
-        plugin ->> runner: Match
+        plugin ->> runner: Hit
         runner ->> plugin: Ok
-        plugin ->> runner: Match
+        plugin ->> runner: Hit
         runner ->> plugin: Ok
-        plugin ->> runner: Match
+        plugin ->> runner: Hit
         runner ->> plugin: Abort
     end
     runner ->> plugin: GetData(new_entry_text)

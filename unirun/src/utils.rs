@@ -11,12 +11,12 @@ use gtk::{
 #[allow(unused_imports)]
 use log::*;
 use unirun_if::{
-    package::{match_if::Match, Command, Package, Payload},
+    package::{Command, Hit, Package, Payload},
     path,
     socket::{connect_and_write_future, stream_read_future, stream_write_future},
 };
 
-use crate::types::{gmatch::GMatch, RuntimeData};
+use crate::types::{ghit::GHit, RuntimeData};
 
 pub fn build_socket_service(
     runtime_data: Rc<RefCell<RuntimeData>>,
@@ -93,15 +93,15 @@ pub fn build_label(use_markup: bool, label: &str) -> gtk::Label {
 }
 
 pub fn build_image(icon: &str) -> gtk::Image {
-    let mut match_image = gtk::Image::builder().pixel_size(32);
+    let mut image = gtk::Image::builder().pixel_size(32);
     let path = PathBuf::from(icon);
 
-    match_image = if path.is_absolute() {
-        match_image.file(path.to_string_lossy())
+    image = if path.is_absolute() {
+        image.file(path.to_string_lossy())
     } else {
-        match_image.icon_name(icon)
+        image.icon_name(icon)
     };
-    match_image.build()
+    image.build()
 }
 
 pub fn launch_plugins() {
@@ -174,8 +174,8 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
     clear_entry_pool(&mut runtime_data);
     // filter_connections(&mut runtime_data);
 
-    let match_store = runtime_data.match_store.clone();
-    match_store.remove_all();
+    let hit_store = runtime_data.hit_store.clone();
+    hit_store.remove_all();
 
     let text = Rc::new(text.to_owned());
 
@@ -186,7 +186,7 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                 #[strong]
                 text,
                 #[strong]
-                match_store,
+                hit_store,
                 async move {
                     stream_write_future(
                         &conn.output_stream(),
@@ -220,14 +220,14 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                         let response = stream_read_future(&conn.input_stream()).await.unwrap();
                         let response_id = response.get_id();
                         match response.payload {
-                            Payload::Match(m) => {
-                                match_store.append(&{
-                                    let gmatch = GMatch::from(m);
-                                    gmatch.set_plugin_pid(
+                            Payload::Hit(h) => {
+                                hit_store.append(&{
+                                    let ghit = GHit::from(h);
+                                    ghit.set_plugin_pid(
                                         conn.socket().credentials().unwrap().unix_pid().unwrap()
                                             as u64,
                                     );
-                                    gmatch
+                                    ghit
                                 });
 
                                 stream_write_future(
@@ -250,15 +250,15 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
 
 pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<RuntimeData>>) {
     glib::spawn_future_local(async move {
-        let gmatch = runtime_data
+        let ghit = runtime_data
             .borrow()
-            .match_store
+            .hit_store
             .item(row_id)
             .unwrap_or_else(|| panic!("Failed to get list_store item at {} position", row_id))
-            .downcast::<GMatch>()
-            .expect("Failed to downcast Object to MatchRow");
+            .downcast::<GHit>()
+            .expect("Failed to downcast Object to GHit");
 
-        let plugin_pid = gmatch.get_plugin_pid();
+        let plugin_pid = ghit.get_plugin_pid();
 
         let connections = runtime_data.borrow().connections.clone();
         let connection = connections
@@ -268,8 +268,8 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
             })
             .unwrap();
 
-        let rmatch: Match = gmatch.clone().into();
-        let request = Package::new(Payload::Command(Command::Activate(rmatch.id.to_owned())));
+        let hit: Hit = ghit.clone().into();
+        let request = Package::new(Payload::Command(Command::Activate(hit.id.to_owned())));
         stream_write_future(&connection.output_stream(), request.clone())
             .await
             .unwrap();

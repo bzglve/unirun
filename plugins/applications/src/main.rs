@@ -8,12 +8,12 @@ use glib::{self, clone};
 #[allow(unused_imports)]
 use log::*;
 use unirun_if::{
-    package::{match_if::Match, Command, Package, PackageId, Payload},
+    package::{Command, Hit, Package, PackageId, Payload},
     socket::{connection, stream_read_future, stream_write_future},
 };
 
 fn handle_get_data<'a>(
-    matches: Vec<Match>,
+    hits: Vec<Hit>,
     pack_id: PackageId,
     connection: &'a SocketConnection,
     main_loop: &'a glib::MainLoop,
@@ -26,11 +26,11 @@ fn handle_get_data<'a>(
             .unwrap();
 
         let mut i = 0;
-        while i < matches.len() {
-            let m = matches.get(i).unwrap();
-            let pack = Package::new(Payload::Match(m.clone()));
+        while i < hits.len() {
+            let h = hits.get(i).unwrap();
+            let pack = Package::new(Payload::Hit(h.clone()));
 
-            debug!("Sending {}", m);
+            debug!("Sending {}", h);
             stream_write_future(&connection.output_stream(), pack)
                 .await
                 .unwrap();
@@ -73,35 +73,29 @@ fn handle_get_data<'a>(
 async fn handle_command(
     command: Command,
     pack_id: PackageId,
-    matches: Rc<RefCell<Vec<(AppInfo, Match)>>>,
+    hits: Rc<RefCell<Vec<(AppInfo, Hit)>>>,
     connection: &SocketConnection,
     main_loop: &glib::MainLoop,
 ) {
     match command {
         Command::GetData(text) => {
-            *matches.borrow_mut() = (if text.is_empty() {
+            *hits.borrow_mut() = (if text.is_empty() {
                 AppInfo::all()
             } else {
                 AppInfo::search(&text)
             })
             .into_iter()
-            .map(|app_info| (app_info.clone(), Match::from(app_info)))
+            .map(|app_info| (app_info.clone(), Hit::from(app_info)))
             .collect();
 
-            let mt = matches
-                .borrow()
-                .clone()
-                .into_iter()
-                .map(|(_, m)| m)
-                .collect();
-            handle_get_data(mt, pack_id, connection, &main_loop.clone()).await;
+            let hits_right = hits.borrow().clone().into_iter().map(|(_, h)| h).collect();
+            handle_get_data(hits_right, pack_id, connection, &main_loop.clone()).await;
         }
         Command::Activate(id) => {
             if let Some(app_info) =
-                matches
-                    .borrow()
+                hits.borrow()
                     .iter()
-                    .find_map(|(a, m)| if m.id == id { Some(a) } else { None })
+                    .find_map(|(a, h)| if h.id == id { Some(a) } else { None })
             {
                 if let Some(id) = &app_info.id {
                     info!("Launching: {}", id);
@@ -133,7 +127,7 @@ async fn handle_command(
 fn main() -> Result<(), glib::Error> {
     env_logger::init();
 
-    let matches = Rc::new(RefCell::new(Vec::new()));
+    let hits = Rc::new(RefCell::new(Vec::new()));
     let main_loop = Rc::new(glib::MainLoop::new(None, true));
     let conn = connection()?;
 
@@ -159,7 +153,7 @@ fn main() -> Result<(), glib::Error> {
                         handle_command(
                             command.clone(),
                             data.get_id(),
-                            matches.clone(),
+                            hits.clone(),
                             &conn,
                             &main_loop,
                         )
