@@ -269,9 +269,7 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
             .unwrap();
 
         let rmatch: Match = gmatch.clone().into();
-        let request = Package::new(Payload::Command(Command::Activate(
-            rmatch.get_id().to_owned(),
-        )));
+        let request = Package::new(Payload::Command(Command::Activate(rmatch.id.to_owned())));
         stream_write_future(&connection.output_stream(), request.clone())
             .await
             .unwrap();

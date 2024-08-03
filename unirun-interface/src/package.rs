@@ -17,7 +17,6 @@ impl Display for Uuid {
     }
 }
 
-// FIXME why?
 impl From<&str> for Uuid {
     fn from(value: &str) -> Self {
         Self(value.to_owned())
@@ -83,7 +82,6 @@ pub mod match_if {
 
     #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq)]
     pub struct Match {
-        // TODO remove public to prevent building without `Self::new()`
         pub id: MatchId,
         pub title: String,
         pub description: Option<String>,
@@ -92,18 +90,6 @@ pub mod match_if {
     }
 
     impl Match {
-        /// Creates a new `Match` instance.
-        ///
-        /// # Parameters
-        ///
-        /// - `title`: The title of the match.
-        /// - `description`: An optional description of the match.
-        /// - `icon`: An optional icon associated with the match.
-        /// - `use_pango`: A flag indicating whether Pango is used.
-        ///
-        /// # Returns
-        ///
-        /// A new `Match` instance.
         pub fn new(
             title: &str,
             description: Option<&str>,
@@ -117,21 +103,6 @@ pub mod match_if {
                 icon: icon.map(str::to_owned),
                 use_pango,
             }
-        }
-
-        pub fn get_id(&self) -> MatchId {
-            self.id.clone()
-        }
-
-        /// Generates a new ID for the match and updates the existing one.
-        ///
-        /// # Returns
-        ///
-        /// The new UUID of the match.
-        pub fn update_id(&mut self) -> MatchId {
-            let new_id = MatchId::new();
-            self.id = new_id.clone();
-            new_id
         }
     }
 

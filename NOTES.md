@@ -10,14 +10,13 @@ sequenceDiagram
     runner ->> plugin: GetData(entry_text)
     plugin ->> runner: Ok
     loop Data transfer
-        plugin ->> runner: Match
+        plugin ->> runner: Match 0
         runner ->> plugin: Ok
-        Note over runner: `Ok` like runner understands data and accepted it
-        plugin ->> runner: Match
+        plugin ->> runner: Match 1
         runner ->> plugin: Err
-        plugin ->> runner: Match
+        plugin ->> runner: Match 1
         runner ->> plugin: Ok
-        plugin ->> runner: Match
+        plugin ->> runner: Match 2
         runner ->> plugin: Ok
         plugin ->> runner: Abort
     end

@@ -101,7 +101,7 @@ async fn handle_command(
                 matches
                     .borrow()
                     .iter()
-                    .find_map(|(a, m)| if m.get_id() == id { Some(a) } else { None })
+                    .find_map(|(a, m)| if m.id == id { Some(a) } else { None })
             {
                 if let Some(id) = &app_info.id {
                     info!("Launching: {}", id);

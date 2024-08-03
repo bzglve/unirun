@@ -180,7 +180,7 @@ impl From<Match> for GMatch {
     fn from(value: Match) -> Self {
         let item = Self::new();
 
-        item.set_id(&value.get_id().to_string());
+        item.set_id(&value.id.to_string());
         item.set_title(&value.title);
         item.set_description(value.description.as_deref());
         item.set_icon(value.icon.as_deref());
