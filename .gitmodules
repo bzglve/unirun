@@ -1,3 +1,4 @@
 [submodule "plugins/applications"]
 	path = plugins/applications
-	url = https://github.com/bzglve/unirun-plugin-applications.git
+  url = https://github.com/bzglve/unirun-plugin-applications.git
+  ignore = all
