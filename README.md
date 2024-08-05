@@ -17,7 +17,7 @@ Highly inspired by [Anyrun](https://github.com/anyrun-org/anyrun) and [Walker](h
 ### Build
 
 ```bash
-git clone https://github.com/bzglve/unirun.git
+git clone --recursive https://github.com/bzglve/unirun.git
 cd unirun
 cargo build --release
 ```
