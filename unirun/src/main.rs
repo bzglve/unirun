@@ -15,8 +15,9 @@ use unirun_if::{
     constants::MAIN_APP_ID,
     package::{Command, Package, Payload},
     path,
-    socket::connect_and_write,
+    socket::{connect_and_write, stream_read, stream_write},
 };
+use utils::clear_entry_pool;
 
 use crate::utils::{build_socket_service, launch_plugins};
 
@@ -55,14 +56,30 @@ fn main() -> Result<(), glib::Error> {
         }
     ));
 
-    application.connect_shutdown(|_| {
+    application.connect_shutdown(move |_| {
         info!("Application shutdown");
+
+        finalize_connections(runtime_data.clone());
         remove_socket_file();
     });
 
     application.run();
 
     Ok(())
+}
+
+fn finalize_connections(runtime_data: Rc<RefCell<RuntimeData>>) {
+    clear_entry_pool(&mut runtime_data.borrow_mut());
+    let connections = runtime_data.borrow().connections.clone();
+    for connection in connections {
+        trace!("SENDING QUIT");
+        let _ = stream_write(
+            &connection.output_stream(),
+            Package::new(Payload::Command(Command::Quit)),
+        );
+
+        let _ = stream_read(&connection.input_stream());
+    }
 }
 
 // FIXME

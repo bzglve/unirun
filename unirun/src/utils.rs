@@ -16,7 +16,10 @@ use unirun_if::{
     socket::{connect_and_write_future, stream_read_future, stream_write_future},
 };
 
-use crate::types::{ghit::GHit, RuntimeData};
+use crate::{
+    types::{ghit::GHit, RuntimeData},
+    MAIN_WINDOW_TITLE,
+};
 
 pub fn build_socket_service(
     runtime_data: Rc<RefCell<RuntimeData>>,
@@ -139,36 +142,36 @@ pub fn launch_plugins() {
     }
 }
 
-pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
-    fn clear_entry_pool(runtime_data: &mut RuntimeData) {
-        let entry_pool = &runtime_data.entry_pool;
+pub fn clear_entry_pool(runtime_data: &mut RuntimeData) {
+    let entry_pool = &runtime_data.entry_pool;
 
-        if !entry_pool.is_empty() {
-            warn!(
-                "There is still {} running tasks. Aborting",
-                entry_pool.len()
-            );
+    if !entry_pool.is_empty() {
+        warn!(
+            "There is still {} running tasks. Aborting",
+            entry_pool.len()
+        );
 
-            entry_pool.iter().for_each(|jh| jh.abort());
-            runtime_data.entry_pool.clear();
-        }
+        entry_pool.iter().for_each(|jh| jh.abort());
+        runtime_data.entry_pool.clear();
     }
+}
 
-    // fn filter_connections(runtime_data: &mut RuntimeData) {
-    //     let connections = runtime_data.connections.clone();
-    //     runtime_data.connections = connections
-    //         .into_iter()
-    //         .filter_map(|conn| {
-    //             // TODO test
-    //             if conn.is_connected() {
-    //                 Some(conn)
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect();
-    // }
+// pub fn filter_connections(runtime_data: &mut RuntimeData) {
+//     let connections = runtime_data.connections.clone();
+//     runtime_data.connections = connections
+//         .into_iter()
+//         .filter_map(|conn| {
+//             // TODO test
+//             if conn.is_connected() {
+//                 Some(conn)
+//             } else {
+//                 None
+//             }
+//         })
+//         .collect();
+// }
 
+pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
     let mut runtime_data = runtime_data.borrow_mut();
 
     clear_entry_pool(&mut runtime_data);
@@ -204,7 +207,7 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                     let request_id = request.get_id();
                     // FIXME is this workaround?
                     loop {
-                        if let Payload::Result(Ok(response_id)) =
+                        if let Payload::Result((response_id, Ok(()))) =
                             stream_read_future(&conn.input_stream())
                                 .await
                                 .unwrap()
@@ -232,7 +235,7 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
 
                                 stream_write_future(
                                     &conn.output_stream(),
-                                    Package::new(Payload::Result(Ok(response_id))),
+                                    Package::new(Payload::Result((response_id, Ok(())))),
                                 )
                                 .await
                                 .unwrap();
@@ -269,6 +272,7 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
             .unwrap();
 
         let hit: Hit = ghit.clone().into();
+        // TODO need to send Abort before Activate ?
         let request = Package::new(Payload::Command(Command::Activate(hit.id.to_owned())));
         stream_write_future(&connection.output_stream(), request.clone())
             .await
@@ -279,12 +283,29 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
             .await
             .unwrap();
 
-        if let Payload::Result(Ok(response_id)) = response.payload {
-            if response_id == request_id {
-                connect_and_write_future(Package::new(Payload::Command(Command::Quit)))
-                    .await
-                    .unwrap();
-            }
+        match response.payload {
+            Payload::Result((response_id, result)) => match result {
+                Ok(()) => {
+                    if response_id == request_id {
+                        connect_and_write_future(Package::new(Payload::Command(Command::Quit)))
+                            .await
+                            .unwrap();
+                    }
+                }
+                Err(e) => {
+                    let notification = gio::Notification::new(MAIN_WINDOW_TITLE);
+                    notification.set_body(Some(&e));
+                    // TODO add desktop file?
+                    // https://docs.gtk.org/gio/class.Notification.html
+                    // notification.set_icon(&gio::ThemedIcon::new("dialog-error"));
+
+                    runtime_data
+                        .borrow()
+                        .application
+                        .send_notification(None, &notification);
+                }
+            },
+            _ => unreachable!(),
         }
     });
 }

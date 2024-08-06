@@ -64,7 +64,7 @@ mod package {
         Command(Command),
 
         #[serde(rename = "result")]
-        Result(Result<PackageId, PackageId>),
+        Result((PackageId, Result<(), String>)),
 
         #[serde(rename = "hit")]
         Hit(Hit),

@@ -52,3 +52,15 @@ sequenceDiagram
     runner ->> plugin: Activate(UUID)
     plugin ->> runner: Err
 ```
+
+```mermaid
+sequenceDiagram
+    title On Quit
+    participant runner
+    participant plugin
+
+    runner ->> plugin: Quit
+    Note over plugin: Plugin do what it need to deinit
+    plugin ->> runner: Ok|Err
+    Note over runner: Waiting for result but don't really cares what it will be
+```
