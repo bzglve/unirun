@@ -121,20 +121,34 @@ where
     let main_list = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::Single)
         .build();
-    main_list.bind_model(Some(&model), move |hit_tow| {
-        hit_tow
+    main_list.bind_model(Some(&model), move |hit_row| {
+        hit_row
             .clone()
             .downcast::<GHit>()
             .expect("Can't downcast glib::Object to GHit")
             .into()
     });
 
-    main_list.connect_row_activated(move |_, row| on_activate(row));
-
     model.connect_items_changed(clone!(
         #[strong]
         main_list,
         move |_, _, _, _| main_list.select_row(main_list.row_at_index(0).as_ref())
+    ));
+
+    main_list.connect_row_activated(move |_, row| on_activate(row));
+
+    main_list.connect_move_cursor(clone!(
+        #[strong]
+        model,
+        move |_self, _, count, _, _| {
+            if let Some(row) = _self.selected_row() {
+                if row.index() == 0 && count == -1 {
+                    _self.emit_move_focus(gtk::DirectionType::TabBackward);
+                } else if row.index() == model.n_items() as i32 - 1 && count == 1 {
+                    _self.emit_move_focus(gtk::DirectionType::TabForward);
+                }
+            }
+        }
     ));
 
     main_list
