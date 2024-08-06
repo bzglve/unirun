@@ -61,11 +61,26 @@ cargo install --path plugins/*
 unirun  # if it placed into dir from your $PATH
 ```
 
-> ![NOTE]
+> [!NOTE]
 >
 > unirun will scan dir where it placed for files matches `unirun-plugin-*` to launch them
 >
 > so plugin need to be named proper way and placed alongside with unirun binary
+
+#### Customizing run
+
+- with (no) features and without install
+
+  ```bash
+  cargo run --bin unirun --no-default-features
+  ```
+
+- logging
+
+  ```bash
+  # trace debug warn info error
+  RUST_LOG=trace cargo run  # ...
+  ```
 
 ## Comments
 
