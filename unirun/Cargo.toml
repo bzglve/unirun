@@ -1,6 +1,6 @@
 [package]
 name = "unirun"
-version = "0.2.1-alpha"
+version = "0.2.2-alpha"
 authors = ["Viktor Bezuglov viktory683@gmail.com"]
 edition = "2021"
 description = "Yet another runner appliction"
@@ -13,7 +13,10 @@ documentation = "https://github.com/bzglve/unirun"
 unirun-if = { path = "../unirun-interface", package = "unirun-interface" }
 ctrlc = { version = "3.4", features = ["termination"] }
 gtk = { version = "0.9", package = "gtk4" }
-gtk-layer-shell = { version = "0.4", package = "gtk4-layer-shell" }
+gtk-layer-shell = { version = "0.4", package = "gtk4-layer-shell", optional = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 serde_json = { workspace = true }
+
+[features]
+default = ["dep:gtk-layer-shell"]

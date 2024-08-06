@@ -6,6 +6,7 @@ use gtk::{
     glib::{self, clone},
     prelude::*,
 };
+#[cfg(feature = "default")]
 use gtk_layer_shell::LayerShell;
 #[allow(unused_imports)]
 use log::*;
@@ -32,6 +33,7 @@ fn connect_key_press_events<F>(
 }
 
 fn build_window(app: impl IsA<gtk::Application>) -> gtk::ApplicationWindow {
+    #[cfg(feature = "default")]
     fn init_layer_shell(window: impl LayerShell) {
         use gtk_layer_shell::{Edge, KeyboardMode, Layer};
 
@@ -61,6 +63,7 @@ fn build_window(app: impl IsA<gtk::Application>) -> gtk::ApplicationWindow {
     let window = gtk::ApplicationWindow::new(&app);
     window.set_title(Some(MAIN_WINDOW_TITLE));
     window.set_default_size(650, 500); // TODO move to config?
+    #[cfg(feature = "default")]
     init_layer_shell(window.clone());
 
     let window_eck = gtk::EventControllerKey::new();

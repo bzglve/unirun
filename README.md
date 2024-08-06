@@ -22,6 +22,29 @@ cd unirun
 cargo build --release
 ```
 
+#### Customizing build
+
+unirun crate contains some features
+
+to build with/without features you can do
+
+```bash
+# build enabling feature
+cargo build --release --features A --features B
+# build without default features
+cargo build --release --no-default-features
+# combining theese two
+cargo build --release --no-default-features --features A
+```
+
+##### Features
+
+- `dep:gtk-layer-shell` - `gtk-layer-shell` as optional dependency. For thouse who don't have that
+
+###### Default
+
+- `dep:gtk-layer-shell`
+
 ### Install
 
 ```bash
