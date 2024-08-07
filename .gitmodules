@@ -2,3 +2,7 @@
 	path = plugins/applications
 	url = https://github.com/bzglve/unirun-plugin-applications.git
 	ignore = all
+[submodule "plugins/websearch"]
+	path = plugins/websearch
+	url = https://github.com/bzglve/unirun-plugin-websearch.git
+	ignore = all

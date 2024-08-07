@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["plugins/applications", "unirun", "unirun-interface"]
+members = ["plugins/*", "unirun", "unirun-interface"]
 
 [workspace.dependencies]
 glib = "0.20"
