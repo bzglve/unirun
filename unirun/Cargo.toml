@@ -1,6 +1,6 @@
 [package]
 name = "unirun"
-version = "0.2.2-alpha"
+version = "0.2.3-alpha"
 authors = ["Viktor Bezuglov viktory683@gmail.com"]
 edition = "2021"
 description = "Yet another runner appliction"
