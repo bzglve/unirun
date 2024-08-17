@@ -13,7 +13,7 @@ use log::*;
 use unirun_if::{
     package::{Command, Hit, Package, Payload},
     path,
-    socket::{connect_and_write_future, stream_read_future, stream_write_future},
+    socket::Stream,
 };
 
 use crate::{
@@ -24,14 +24,8 @@ use crate::{
 pub fn build_socket_service(
     runtime_data: Rc<RefCell<RuntimeData>>,
 ) -> Result<gio::SocketService, glib::Error> {
-    fn handle_new_connection(
-        connection: gio::SocketConnection,
-        runtime_data: Rc<RefCell<RuntimeData>>,
-    ) {
-        fn handle_new_connection_from_self(
-            connection: impl IOStreamExt,
-            runtime_data: Rc<RefCell<RuntimeData>>,
-        ) {
+    fn handle_new_connection(stream: Stream, runtime_data: Rc<RefCell<RuntimeData>>) {
+        fn handle_new_connection_from_self(stream: Stream, runtime_data: Rc<RefCell<RuntimeData>>) {
             fn handle_socket_data(data: &Payload, runtime_data: Rc<RefCell<RuntimeData>>) {
                 if let Payload::Command(Command::Quit) = data {
                     runtime_data.borrow().application.quit()
@@ -39,27 +33,22 @@ pub fn build_socket_service(
             }
 
             glib::spawn_future_local(async move {
-                let data = stream_read_future(&connection.input_stream())
-                    .await
-                    .unwrap_or_else(|e| {
-                        error!("{}", e);
-                        panic!("{}", e);
-                    });
+                let data = stream.read_future().await.unwrap_or_else(|e| {
+                    error!("{}", e);
+                    panic!("{}", e);
+                });
 
                 handle_socket_data(&data.payload, runtime_data);
             });
         }
 
-        let creds = connection.socket().credentials().unwrap_or_default();
+        let creds = stream.credentials.unwrap_or_default();
 
-        let pid = creds.unix_pid().expect("Failed to read process ID") as u64;
-        if std::process::id() as u64 == pid {
-            handle_new_connection_from_self(connection, runtime_data.clone());
+        let pid = creds.pid.expect("Failed to read process ID");
+        if std::process::id() == pid {
+            handle_new_connection_from_self(stream, runtime_data.clone());
         } else {
-            runtime_data
-                .borrow_mut()
-                .connections
-                .push(connection.clone());
+            runtime_data.borrow_mut().connections.push(stream.clone());
             on_entry_changed("", runtime_data.clone());
         }
     }
@@ -75,7 +64,7 @@ pub fn build_socket_service(
     )?;
 
     socket_service.connect_incoming(move |_, connection, _| {
-        handle_new_connection(connection.clone(), runtime_data.clone());
+        handle_new_connection(Stream::from(connection.clone()), runtime_data.clone());
         true
     });
 
@@ -182,7 +171,7 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
 
     let text = Rc::new(text.to_owned());
 
-    for conn in runtime_data.connections.clone() {
+    for stream in runtime_data.connections.clone() {
         runtime_data
             .entry_pool
             .push(glib::spawn_future_local(clone!(
@@ -191,27 +180,20 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                 #[strong]
                 hit_store,
                 async move {
-                    stream_write_future(
-                        &conn.output_stream(),
-                        Package::new(Payload::Command(Command::Abort)),
-                    )
-                    .await
-                    .unwrap();
+                    stream
+                        .write_future(Package::new(Payload::Command(Command::Abort)))
+                        .await
+                        .unwrap();
 
                     let request =
                         Package::new(Payload::Command(Command::GetData(text.to_string())));
-                    stream_write_future(&conn.output_stream(), request.clone())
-                        .await
-                        .unwrap();
+                    stream.write_future(request.clone()).await.unwrap();
 
                     let request_id = request.get_id();
                     // FIXME is this workaround?
                     loop {
                         if let Payload::Result((response_id, Ok(()))) =
-                            stream_read_future(&conn.input_stream())
-                                .await
-                                .unwrap()
-                                .payload
+                            stream.read_future().await.unwrap().payload
                         {
                             if request_id == response_id {
                                 break;
@@ -220,25 +202,25 @@ pub fn on_entry_changed(text: &str, runtime_data: Rc<RefCell<RuntimeData>>) {
                     }
 
                     loop {
-                        let response = stream_read_future(&conn.input_stream()).await.unwrap();
+                        let response = stream.read_future().await.unwrap();
                         let response_id = response.get_id();
                         match response.payload {
                             Payload::Hit(h) => {
                                 hit_store.append(&{
                                     let ghit = GHit::from(h);
                                     ghit.set_plugin_pid(
-                                        conn.socket().credentials().unwrap().unix_pid().unwrap()
-                                            as u64,
+                                        stream.credentials.unwrap().pid.unwrap() as u64
                                     );
                                     ghit
                                 });
 
-                                stream_write_future(
-                                    &conn.output_stream(),
-                                    Package::new(Payload::Result((response_id, Ok(())))),
-                                )
-                                .await
-                                .unwrap();
+                                stream
+                                    .write_future(Package::new(Payload::Result((
+                                        response_id,
+                                        Ok(()),
+                                    ))))
+                                    .await
+                                    .unwrap();
                             }
                             Payload::Command(Command::Abort) => {
                                 break;
@@ -264,30 +246,27 @@ pub fn handle_selection_activation(row_id: u32, runtime_data: Rc<RefCell<Runtime
         let plugin_pid = ghit.get_plugin_pid();
 
         let connections = runtime_data.borrow().connections.clone();
-        let connection = connections
+        let stream = connections
             .iter()
-            .find(|conn| {
-                conn.socket().credentials().unwrap().unix_pid().unwrap() as u64 == plugin_pid
-            })
+            .find(|stream| stream.credentials.unwrap().pid.unwrap() as u64 == plugin_pid)
             .unwrap();
 
         let hit: Hit = ghit.clone().into();
         // TODO need to send Abort before Activate ?
         let request = Package::new(Payload::Command(Command::Activate(hit.id.to_owned())));
-        stream_write_future(&connection.output_stream(), request.clone())
-            .await
-            .unwrap();
+        stream.write_future(request.clone()).await.unwrap();
         let request_id = request.get_id();
 
-        let response = stream_read_future(&connection.input_stream())
-            .await
-            .unwrap();
+        let response = stream.read_future().await.unwrap();
 
         match response.payload {
             Payload::Result((response_id, result)) => match result {
                 Ok(()) => {
                     if response_id == request_id {
-                        connect_and_write_future(Package::new(Payload::Command(Command::Quit)))
+                        Stream::new_future()
+                            .await
+                            .unwrap()
+                            .write_future(Package::new(Payload::Command(Command::Quit)))
                             .await
                             .unwrap();
                     }

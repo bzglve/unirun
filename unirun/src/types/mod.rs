@@ -4,10 +4,11 @@ use crate::MAIN_APP_ID;
 
 use ghit::GHit;
 use gtk::{gio, glib, Application};
+use unirun_if::socket::Stream;
 
 pub struct RuntimeData {
     pub application: gtk::Application,
-    pub connections: Vec<gio::SocketConnection>,
+    pub connections: Vec<Stream>,
     pub entry_pool: Vec<glib::JoinHandle<()>>,
     pub hit_store: gio::ListStore,
 }

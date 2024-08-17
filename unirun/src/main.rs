@@ -15,7 +15,7 @@ use unirun_if::{
     constants::MAIN_APP_ID,
     package::{Command, Package, Payload},
     path,
-    socket::{connect_and_write, stream_read, stream_write},
+    socket::Stream,
 };
 use utils::clear_entry_pool;
 
@@ -28,7 +28,10 @@ fn main() -> Result<(), glib::Error> {
 
     ctrlc::set_handler(|| {
         info!("Ctrl-C shutdown");
-        if let Err(e) = connect_and_write(Package::new(Payload::Command(Command::Quit))) {
+        if let Err(e) = Stream::new()
+            .unwrap()
+            .write(Package::new(Payload::Command(Command::Quit)))
+        {
             error!("Failed to send quit command: {}", e);
         }
     })
@@ -71,14 +74,11 @@ fn main() -> Result<(), glib::Error> {
 fn finalize_connections(runtime_data: Rc<RefCell<RuntimeData>>) {
     clear_entry_pool(&mut runtime_data.borrow_mut());
     let connections = runtime_data.borrow().connections.clone();
-    for connection in connections {
+    for stream in connections {
         trace!("SENDING QUIT");
-        let _ = stream_write(
-            &connection.output_stream(),
-            Package::new(Payload::Command(Command::Quit)),
-        );
+        let _ = stream.write(Package::new(Payload::Command(Command::Quit)));
 
-        let _ = stream_read(&connection.input_stream());
+        let _ = stream.read();
     }
 }
 
